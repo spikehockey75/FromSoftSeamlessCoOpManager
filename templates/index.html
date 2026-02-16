@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FromSoft Seamless Co-op Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ─── Top bar ─────────────────────────────────────────────── -->
+<header>
+    <div class="header-left">
+        <h1>FromSoft Seamless Co-op Manager</h1>
+        <span id="scan-status" class="scan-status"></span>
+    </div>
+    <div class="header-right">
+        <button id="btn-scan" class="btn btn-accent" onclick="doScan()">
+            <span class="btn-icon">&#x1F50D;</span> Scan for Games
+        </button>
+    </div>
+</header>
+
+<!-- ─── Tab bar (used inside game detail view) ──────────────── -->
+<nav id="tab-bar" class="tab-bar hidden"></nav>
+
+<!-- ─── Main content area ───────────────────────────────────── -->
+<main id="content">
+    <!-- Landing state shown before any scan -->
+    <div id="landing" class="landing">
+        <div class="landing-icon">&#x1F3AE;</div>
+        <h2>Welcome</h2>
+        <p>Click <strong>Scan for Games</strong> to detect FromSoftware games with co-op mods installed.</p>
+        <p class="muted">The scanner checks all drives for Steam libraries and known mod config files.</p>
+    </div>
+
+    <!-- Shown while scanning -->
+    <div id="scanning" class="landing hidden">
+        <div class="spinner"></div>
+        <h2>Scanning drives&hellip;</h2>
+        <p>Looking for Steam libraries and co-op mod configs on all drives.</p>
+    </div>
+
+    <!-- Shown when no games found -->
+    <div id="no-games" class="landing hidden">
+        <div class="landing-icon">&#x1F6AB;</div>
+        <h2>No games found</h2>
+        <p>No FromSoftware co-op mods were detected. Make sure the mod is installed and try scanning again.</p>
+    </div>
+
+    <!-- Game home — card grid (created dynamically) -->
+    <div id="game-home" class="game-home hidden"></div>
+
+    <!-- Game detail panels (created dynamically) -->
+    <div id="panels"></div>
+</main>
+
+<!-- ─── Toast container ─────────────────────────────────────── -->
+<div id="toasts" class="toast-container"></div>
+
+<!-- ─── Confirmation modal ──────────────────────────────────── -->
+<div id="confirm-modal" class="modal-overlay hidden">
+    <div class="modal">
+        <div class="modal-title" id="confirm-title">Confirm</div>
+        <div class="modal-body" id="confirm-body"></div>
+        <div class="modal-actions">
+            <button class="btn btn-muted" onclick="closeConfirm()">Cancel</button>
+            <button class="btn btn-accent" id="confirm-ok">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
