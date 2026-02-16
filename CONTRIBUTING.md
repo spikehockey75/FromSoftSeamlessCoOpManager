@@ -27,7 +27,7 @@ There are **no build steps**. Edit a file, restart the server, refresh the brows
 
 2. **Run the installer**
    ```
-   install.bat
+   Setup_FromSoft_Coop_Manager.bat
    ```
    This creates a `.venv` virtual environment and installs Flask + Pillow.
 
@@ -52,7 +52,7 @@ server.py            ← All backend logic (Flask routes, scanner, INI parser)
 templates/index.html ← Single HTML template
 static/app.js        ← All frontend logic (dashboard, tabs, forms, API calls)
 static/style.css     ← All styling (dark theme)
-install.bat          ← One-time setup script
+Setup_FromSoft_Coop_Manager.bat  ← One-time setup script
 launch.vbs           ← Silent launcher (runs run.bat with no console window)
 run.bat              ← App launcher (uses pythonw for background execution)
 requirements.txt     ← Python dependencies

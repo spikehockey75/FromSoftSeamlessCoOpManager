@@ -7,7 +7,7 @@ REM ─── Check if installed ───────────────�
 if not exist ".venv\Scripts\activate.bat" (
     echo  First time? Running installer...
     echo.
-    call install.bat
+    call Setup_FromSoft_Coop_Manager.bat
     exit /b
 )
 

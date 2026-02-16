@@ -81,7 +81,7 @@ if errorlevel 1 (
     if errorlevel 1 (
         echo  [ERROR] Python was installed but cannot be found in PATH.
         echo          Please close this window, open a NEW command prompt,
-        echo          and run install.bat again.
+        echo          and run Setup_FromSoft_Coop_Manager.bat again.
         pause
         exit /b 1
     )

@@ -6,7 +6,7 @@ An all-in-one desktop tool for managing Seamless Co-op mods across multiple From
 ![Python](https://img.shields.io/badge/python-3.8%2B-green)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-> **Quick download:** Grab the installer from the latest GitHub **Releases** page, then run `install.bat`.
+> **Quick download:** Grab the installer from the latest GitHub **Releases** page, then run `Setup_FromSoft_Coop_Manager.bat`.
 
 ---
 
@@ -106,7 +106,7 @@ git clone <repo-url> FromSoftSeamlessCoOpManager
 ### Step 2: Run the Installer
 
 1. Open the `FromSoftSeamlessCoOpManager` folder
-2. **Double-click `install.bat`**
+2. **Double-click `Setup_FromSoft_Coop_Manager.bat`**
 
 The installer handles everything automatically:
 
@@ -168,7 +168,7 @@ Click **← All Games** to return to the dashboard (data is always refreshed).
 
 ### Creating Desktop Shortcuts
 
-- **App shortcut** — created automatically by `install.bat` → "FromSoft Seamless Co-op Manager"
+- **App shortcut** — created automatically by `Setup_FromSoft_Coop_Manager.bat` → "FromSoft Seamless Co-op Manager"
 - **Game shortcuts** — click **Desktop Shortcut** on any game card → creates e.g., "Armored Core 6 Co-op" with the game's Steam cover art as the icon, pointing directly to the co-op launcher
 
 ### Rescanning
@@ -181,7 +181,7 @@ If you install or uninstall a game, click **Scan for Games** again. The tool ver
 
 ```
 FromSoftSeamlessCoOpManager/
-├── install.bat          ← One-time setup (double-click first)
+├── Setup_FromSoft_Coop_Manager.bat  ← One-time setup (double-click first)
 ├── launch.vbs           ← Silent launcher (no console window)
 ├── run.bat              ← Starts the app (called by launch.vbs)
 ├── server.py            ← Flask backend (scanner, APIs, launcher)
@@ -215,7 +215,7 @@ Because the mod introduces new items not found in the base game, it uses a diffe
 
 The automatic Python installation may have failed, or PATH wasn't updated.
 
-**Fix:** Open a **new** Command Prompt and run `install.bat` again. If it still fails, install Python manually from [python.org/downloads](https://www.python.org/downloads/) and **check "Add python.exe to PATH"** during install.
+**Fix:** Open a **new** Command Prompt and run `Setup_FromSoft_Coop_Manager.bat` again. If it still fails, install Python manually from [python.org/downloads](https://www.python.org/downloads/) and **check "Add python.exe to PATH"** during install.
 
 ### The app didn't find my game
 
@@ -239,7 +239,7 @@ The server runs in the background — there's no console window to close. To sto
 
 ### Can I move the folder?
 
-Yes. Move the entire `FromSoftSeamlessCoOpManager` folder wherever you want. Run `install.bat` again afterward to update the desktop shortcut paths.
+Yes. Move the entire `FromSoftSeamlessCoOpManager` folder wherever you want. Run `Setup_FromSoft_Coop_Manager.bat` again afterward to update the desktop shortcut paths.
 
 ### Does this modify my game files?
 
