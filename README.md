@@ -85,31 +85,9 @@ An all-in-one desktop tool for managing Seamless Co-op mods across multiple From
 ### Prerequisites
 
 - **Windows 10/11**
-- **Python 3.8+** (the installer helps you get this if you don't have it)
 - **Steam** with at least one supported game installed
 
-### Installing Python (if you don't have it)
-
-**Option A — Python.org (recommended):**
-1. Go to https://www.python.org/downloads/
-2. Click **Download Python** for the latest 3.x version
-3. Run the installer
-4. On the first screen, **check the box**: `Add python.exe to PATH`
-5. Click **Install Now**
-6. After it finishes, close the installer
-
-**Option B — Microsoft Store:**
-1. Open the Microsoft Store
-2. Search for **Python**
-3. Install the latest Python 3.x package
-
-**Verify Python installed:**
-1. Open **Command Prompt**
-2. Run:
-  ```
-  python --version
-  ```
-3. You should see something like `Python 3.x.x`
+> **Python** is required but the installer will install it automatically if you don't have it — no manual steps needed.
 
 ### Step 1: Get the Files
 
@@ -134,17 +112,13 @@ The installer handles everything automatically:
 
 | Step | What it does |
 |------|-------------|
-| **1/5** | Checks for Python — if missing, offers to open the download page or Microsoft Store |
+| **1/5** | Checks for Python — if missing, installs it automatically via `winget` or direct download |
 | **2/5** | Creates an isolated `.venv` virtual environment (nothing touches your system Python) |
 | **3/5** | Installs dependencies: Flask (web framework) and Pillow (image processing) |
 | **4/5** | Converts the app icon (`FSSIcon.png`) to Windows `.ico` format |
 | **5/5** | Creates a **desktop shortcut** ("FromSoft Seamless Co-op Manager") with the app icon |
 
-> **Don't have Python?** The installer detects this and gives you two options:
-> - **Y** — Opens the [Python download page](https://www.python.org/downloads/)
-> - **S** — Opens the Microsoft Store Python page (one-click install)
->
-> ⚠️ If installing from python.org, **check the box "Add python.exe to PATH"** at the bottom of the first installer screen. Then close the window and run `install.bat` again.
+> **Don't have Python?** The installer handles it automatically — it tries `winget` first, then falls back to downloading and running the official Python installer silently. PATH is configured automatically so the rest of the install continues without restarting.
 
 ### Step 3: Launch the App
 
@@ -239,9 +213,9 @@ Because the mod introduces new items not found in the base game, it uses a diffe
 
 ### "Python is not recognized" error
 
-Python isn't installed or not on your system PATH.
+The automatic Python installation may have failed, or PATH wasn't updated.
 
-**Fix:** Open the Microsoft Store → search "Python" → install it. Or go to [python.org/downloads](https://www.python.org/downloads/) and **check "Add python.exe to PATH"** during install. Then run `install.bat` again.
+**Fix:** Open a **new** Command Prompt and run `install.bat` again. If it still fails, install Python manually from [python.org/downloads](https://www.python.org/downloads/) and **check "Add python.exe to PATH"** during install.
 
 ### The app didn't find my game
 
