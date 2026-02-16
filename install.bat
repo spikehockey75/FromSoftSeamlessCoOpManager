@@ -100,8 +100,14 @@ echo  [3/5] Installing dependencies...
 echo.
 
 call .venv\Scripts\activate.bat
-pip install --upgrade pip >nul 2>&1
-pip install -r requirements.txt
+python -m pip install --upgrade pip >nul 2>&1
+set "REQ_FILE=%~dp0requirements.txt"
+if exist "%REQ_FILE%" (
+    python -m pip install -r "%REQ_FILE%"
+) else (
+    echo        requirements.txt not found. Installing base dependencies...
+    python -m pip install flask Pillow
+)
 if errorlevel 1 (
     echo.
     echo  [ERROR] Failed to install dependencies.

@@ -88,6 +88,29 @@ An all-in-one desktop tool for managing Seamless Co-op mods across multiple From
 - **Python 3.8+** (the installer helps you get this if you don't have it)
 - **Steam** with at least one supported game installed
 
+### Installing Python (if you don't have it)
+
+**Option A — Python.org (recommended):**
+1. Go to https://www.python.org/downloads/
+2. Click **Download Python** for the latest 3.x version
+3. Run the installer
+4. On the first screen, **check the box**: `Add python.exe to PATH`
+5. Click **Install Now**
+6. After it finishes, close the installer
+
+**Option B — Microsoft Store:**
+1. Open the Microsoft Store
+2. Search for **Python**
+3. Install the latest Python 3.x package
+
+**Verify Python installed:**
+1. Open **Command Prompt**
+2. Run:
+  ```
+  python --version
+  ```
+3. You should see something like `Python 3.x.x`
+
 ### Step 1: Get the Files
 
 **Option A — Clone or download:**
