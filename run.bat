@@ -6,9 +6,8 @@ if not exist ".venv\Scripts\activate.bat" (
     exit /b 
 ) 
 call .venv\Scripts\activate.bat 
-where pythonw >nul 2>&1 
-if %errorlevel%==0 ( 
-    start "" pythonw server.py 
+if exist ".venv\Scripts\pythonw.exe" ( 
+    start "" ".venv\Scripts\pythonw.exe" server.py 
 ) else ( 
-    python server.py 
+    start "" python server.py 
 ) 
