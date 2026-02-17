@@ -3,6 +3,23 @@ setlocal enabledelayedexpansion
 title FromSoft Co-op Settings Manager - Installer
 color 0B
 
+REM --- Check for Admin Privileges ---
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo  +==============================================================+
+    echo  :                                                              :
+    echo  :      ADMINISTRATOR REQUIRED                                 :
+    echo  :                                                              :
+    echo  :   This installer needs admin privileges to install         :
+    echo  :   Python packages. Please run this as Administrator.        :
+    echo  :                                                              :
+    echo  +==============================================================+
+    echo.
+    pause
+    exit /b 1
+)
+
 echo.
 echo  +==============================================================+
 echo  :                                                              :
