@@ -1284,12 +1284,12 @@ function renderModInstallerUI(gameId, data, container) {
                         const gamePanel = panels.querySelector(`.game-panel[data-game="${gameId}"]`);
                         const sp = gamePanel?.querySelector('[data-subpanel="settings"]');
                         if (sp) delete sp.dataset.loaded;
-                        // Reveal hidden tabs and switch to Launch
+                        // Reveal hidden tabs and switch to Settings
                         if (d.mod_installed && gamePanel) {
                             if (gamePanel._updateTabVisibility) gamePanel._updateTabVisibility();
                             if (gamePanel._activateSub) {
-                                gamePanel._activateSub(0);
-                                if (gamePanel._launchPanel) renderLaunchPanel(gameId, gamePanel._launchPanel);
+                                gamePanel._activateSub(1); // Switch to Settings tab
+                                if (gamePanel._settingsPanel) loadSettings(gameId, gamePanel._settingsPanel);
                             }
                         } else {
                             loadModInstallerUI(gameId, container);
