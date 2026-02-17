@@ -60,32 +60,29 @@ echo.
 
 REM Set the shortcut name
 set "SHORTCUT_NAME=FromSoft Seamless Co-op Manager.lnk"
+set "SHORTCUT_DELETED=0"
 
 REM Delete from regular Desktop
 if exist "%USERPROFILE%\Desktop\%SHORTCUT_NAME%" (
     del "%USERPROFILE%\Desktop\%SHORTCUT_NAME%"
     echo  Deleted: %SHORTCUT_NAME%
-) else (
-    echo  Not found: %USERPROFILE%\Desktop\%SHORTCUT_NAME%
+    set "SHORTCUT_DELETED=1"
 )
 
 REM Delete from OneDrive Desktop (if it exists)
 if exist "%USERPROFILE%\OneDrive\Desktop\%SHORTCUT_NAME%" (
     del "%USERPROFILE%\OneDrive\Desktop\%SHORTCUT_NAME%"
     echo  Deleted: %SHORTCUT_NAME% (OneDrive)
+    set "SHORTCUT_DELETED=1"
 )
 
-REM Try common Desktop folder location as a fallback
-for /f "tokens=3*" %%A in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders" /v Desktop 2^>nul ^| find "Desktop"') do (
-    set "DESKTOP_PATH=%%A %%B"
-)
-if defined DESKTOP_PATH (
-    REM Expand environment variables in the path
-    call set "DESKTOP_PATH=%DESKTOP_PATH%"
-    if exist "%DESKTOP_PATH%\%SHORTCUT_NAME%" (
-        del "%DESKTOP_PATH%\%SHORTCUT_NAME%"
-        echo  Deleted: %SHORTCUT_NAME% (from %DESKTOP_PATH%)
-    )
+REM Use PowerShell to find and delete the shortcut from any Desktop location
+powershell -NoProfile -Command "$desktop = [Environment]::GetFolderPath('Desktop'); $shortcut = Join-Path $desktop '%SHORTCUT_NAME%'; if (Test-Path $shortcut) { Remove-Item $shortcut -Force; Write-Host '  Deleted: %SHORTCUT_NAME% (PowerShell)'; exit 0 } else { exit 1 }" 2>nul
+if %errorlevel%==0 set "SHORTCUT_DELETED=1"
+
+REM Report if no shortcut was found
+if "%SHORTCUT_DELETED%"=="0" (
+    echo  Desktop shortcut not found.
 )
 
 REM Delete game shortcuts (AC6, DS3, ER, DSR, ERN)
