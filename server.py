@@ -53,7 +53,7 @@ GAME_DEFINITIONS = {
         "name": "Dark Souls Remastered",
         "steam_app_id": 570940,
         "steam_folder": "DARK SOULS REMASTERED",
-        "config_relative": os.path.join("Game", "SeamlessCoop", "dsr_settings.ini"),
+        "config_relative": os.path.join("Game", "SeamlessCoop", "ds1sc_settings.ini"),
         "mod_extract_relative": "Game",
         "save_appdata_folder": "DarkSoulsRemastered",
         "save_prefix": "DSR0000",
@@ -62,7 +62,7 @@ GAME_DEFINITIONS = {
         "mod_name": "DSR Seamless Co-op",
         "nexus_url": "https://www.nexusmods.com/darksoulsremastered/mods/899",
         "zip_pattern": r"ds1.*seamless.*co-?op.*\.zip$",
-        "launcher_relative": os.path.join("Game", "dsr_launcher.exe"),
+        "launcher_relative": os.path.join("Game", "ds1sc_launcher.exe"),
         "mod_marker_relative": os.path.join("Game", "SeamlessCoop"),
         "defaults": {
             "allow_invaders": "1",
