@@ -6,7 +6,7 @@ color 0C
 echo.
 echo  +==============================================================+
 echo  :                                                              :
-echo  :      FromSoft Co-op Manager — Uninstaller                    :
+echo  :      FromSoft Co-op Manager - Uninstaller                    :
 echo  :                                                              :
 echo  :   This will remove the app and all shortcuts.                :
 echo  :                                                              :
