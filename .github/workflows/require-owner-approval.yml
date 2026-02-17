@@ -15,6 +15,13 @@ jobs:
           script: |
             const pr = context.payload.pull_request;
             const owner = context.repo.owner;
+            const prAuthor = pr.user.login;
+            
+            // If PR author IS the repo owner, skip approval check
+            if (prAuthor === owner) {
+              console.log(`✅ PR opened by @${owner} (repo owner) - approval not required`);
+              return;
+            }
             
             // If PR is a draft, skip the check
             if (pr.draft) {
@@ -36,7 +43,7 @@ jobs:
             );
             
             if (!ownerApproval) {
-              core.setFailed(`PR requires approval from @${owner} (repo owner) before merging. This is a mandatory check.`);
+              core.setFailed(`PR from @${prAuthor} requires approval from @${owner} (repo owner) before merging.`);
             } else {
               console.log(`✅ PR approved by @${owner}`);
             }
