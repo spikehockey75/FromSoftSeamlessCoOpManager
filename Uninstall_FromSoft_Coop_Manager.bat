@@ -74,16 +74,8 @@ if exist "%DESKTOP_PATH%\%SHORTCUT_NAME%" (
     set "SHORTCUT_DELETED=1"
 )
 
-REM Use PowerShell to find and delete any shortcut that targets launch.vbs (regardless of install location)
-powershell -NoProfile -Command "$desktop = [Environment]::GetFolderPath('Desktop'); Get-ChildItem -Path $desktop -Filter '*.lnk' | ForEach-Object { $shell = New-Object -ComObject WScript.Shell; $shortcut = $shell.CreateShortcut($_.FullName); if ($shortcut.TargetPath -match 'wscript' -and $shortcut.Arguments -match 'launch\.vbs') { Remove-Item $_.FullName -Force; Write-Host \"  Deleted: $($_.Name)\"; } }" 2>nul
-
-REM Also check standard paths
-if exist "%USERPROFILE%\Desktop\%SHORTCUT_NAME%" (
-    del /F /Q "%USERPROFILE%\Desktop\%SHORTCUT_NAME%"
-)
-if exist "%USERPROFILE%\OneDrive\Desktop\%SHORTCUT_NAME%" (
-    del /F /Q "%USERPROFILE%\OneDrive\Desktop\%SHORTCUT_NAME%"
-)
+REM Use PowerShell to find and delete any shortcut that targets launch.vbs (check both standard and OneDrive Desktop)
+powershell -NoProfile -Command "$desktops = @([Environment]::GetFolderPath('Desktop'), \"$env:USERPROFILE\OneDrive\Desktop\"); foreach ($desktop in $desktops) { if (Test-Path $desktop) { Write-Host \"  Checking: $desktop\"; Get-ChildItem -Path $desktop -Filter '*.lnk' -ErrorAction SilentlyContinue | ForEach-Object { $shell = New-Object -ComObject WScript.Shell; $shortcut = $shell.CreateShortcut($_.FullName); Write-Host \"    Found shortcut: $($_.Name)\"; Write-Host \"      Target: $($shortcut.TargetPath)\"; Write-Host \"      Arguments: $($shortcut.Arguments)\"; if ($shortcut.TargetPath -match 'wscript' -and $shortcut.Arguments -match 'launch\.vbs') { Remove-Item $_.FullName -Force; Write-Host \"      DELETED: $($_.Name)\"; } } } }"
 
 echo.
 echo  Desktop shortcut removal complete.
