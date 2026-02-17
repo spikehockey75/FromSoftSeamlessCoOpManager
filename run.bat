@@ -5,9 +5,6 @@ if not exist ".venv\Scripts\activate.bat" (
     call Setup_FromSoft_Coop_Manager.bat 
     exit /b 
 ) 
-call .venv\Scripts\activate.bat 
-if exist ".venv\Scripts\pythonw.exe" ( 
-    start "" ".venv\Scripts\pythonw.exe" server.py 
-) else ( 
-    start "" python server.py 
-) 
+
+REM Start the server using pythonw from venv (runs without console window)
+start "" "%~dp0.venv\Scripts\pythonw.exe" "%~dp0server.py" 
