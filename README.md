@@ -10,6 +10,20 @@ An all-in-one desktop tool for managing Seamless Co-op mods across multiple From
 
 > **Quick install:** Download `Setup_FromSoft_Coop_Manager.bat` from the latest [Release](https://github.com/spikehockey75/FromSoftSeamlessCoOpManager/releases), double-click it, and you're done.
 
+## Screenshots
+
+<div align="center">
+
+| Dashboard | Settings |
+|-----------|----------|
+| [![Dashboard](images/dashboard.png)](images/dashboard.png) | [![Settings](images/settings-tab.png)](images/settings-tab.png) |
+
+| Save Manager | Mod Installer |
+|--------------|---------------|
+| [![Save Manager](images/save-manager.png)](images/save-manager.png) | [![Mod Installer](images/mod-installer.png)](images/mod-installer.png) |
+
+</div>
+
 ---
 
 ## Supported Games
@@ -180,6 +194,7 @@ If you install or uninstall a game, click **Scan for Games** again. The tool ver
 ```
 FromSoftSeamlessCoOpManager/
 ├── Setup_FromSoft_Coop_Manager.bat  ← One-time setup (double-click first)
+├── Uninstall_FromSoft_Coop_Manager.bat  ← Uninstaller (removes app + shortcuts)
 ├── launch.vbs           ← Silent launcher (no console window)
 ├── run.bat              ← Starts the app (called by launch.vbs)
 ├── server.py            ← Flask backend (scanner, APIs, launcher)
@@ -257,12 +272,24 @@ Yes. Add a new entry to the `GAME_DEFINITIONS` dictionary in `server.py`. Each e
 
 ## Uninstalling
 
+### Easy Uninstall (Recommended)
+
+Double-click **`Uninstall_FromSoft_Coop_Manager.bat`** in the app folder. It will:
+- Stop any running instances
+- Delete the app folder (`%LOCALAPPDATA%\FromSoftCoopManager`)
+- Remove all shortcuts (Desktop and OneDrive)
+- Clean up all app data
+
+### Manual Uninstall
+
 1. Delete the install folder: `%LOCALAPPDATA%\FromSoftCoopManager`
 2. Delete any desktop shortcuts:
-  - "FromSoft Seamless Co-op Manager"
-   - "[Game Name] Co-op" (e.g., "Dark Souls III Co-op")
+   - "FromSoft Seamless Co-op Manager"
+   - "[Game Name] Co-op" shortcuts (e.g., "Dark Souls III Co-op")
 
-That's it. Nothing is installed system-wide (except Python if the installer added it). The virtual environment and all app data are inside the install folder.
+> **Note:** Python (if installed) is not removed automatically. To remove it manually, go to **Settings → Apps → Python** and uninstall.
+
+That's it. Nothing else is installed system-wide. The virtual environment and all app data are inside the install folder.
 
 ---
 
