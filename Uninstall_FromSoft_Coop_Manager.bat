@@ -95,6 +95,11 @@ if exist "%USERPROFILE%\OneDrive\Desktop\%SHORTCUT_NAME%" (
     del /F /Q "%USERPROFILE%\OneDrive\Desktop\%SHORTCUT_NAME%"
 )
 
+echo.
+echo  Press any key to continue...
+pause >nul
+echo.
+
 REM Delete game shortcuts (AC6, DS3, ER, DSR, ERN)
 set "GAMES=Armored Core 6 Dark Souls III Dark Souls Remastered Elden Ring Elden Ring Nightreign"
 for %%G in (%GAMES%) do (
