@@ -29,24 +29,45 @@ echo.
 echo  Stopping any running instances...
 echo.
 
-REM Kill any running Python processes from this app
-taskkill /F /IM pythonw.exe >nul 2>&1
-taskkill /F /IM python.exe >nul 2>&1
+REM Kill any running Python processes from this app (more targeted approach)
+REM Only kill processes that are running from the install directory
+set "INSTALL_DIR=%LOCALAPPDATA%\FromSoftCoopManager"
+
+REM Use WMIC to find and kill only Python processes from our install directory
+for /f "tokens=2" %%p in ('wmic process where "name='pythonw.exe' and commandline like '%%FromSoftCoopManager%%'" get processid 2^>nul ^| findstr /r "[0-9]"') do (
+    taskkill /F /PID %%p >nul 2>&1
+)
+for /f "tokens=2" %%p in ('wmic process where "name='python.exe' and commandline like '%%FromSoftCoopManager%%'" get processid 2^>nul ^| findstr /r "[0-9]"') do (
+    taskkill /F /PID %%p >nul 2>&1
+)
+
+REM Wait a moment for processes to fully exit and release file handles
+timeout /t 2 /nobreak >nul 2>&1
+
 echo  Stopped any running instances.
 echo.
-
-REM Install directory
-set "INSTALL_DIR=%LOCALAPPDATA%\FromSoftCoopManager"
 
 echo  Removing installation folder...
 echo  Path: %INSTALL_DIR%
 echo.
 
 if exist "%INSTALL_DIR%" (
-    rd /s /q "%INSTALL_DIR%"
-    if errorlevel 1 (
-        echo  [WARNING] Could not fully delete install folder.
-        echo            Some files may still exist.
+    rd /s /q "%INSTALL_DIR%" >nul 2>&1
+    
+    REM Verify deletion succeeded
+    if exist "%INSTALL_DIR%" (
+        echo  [WARNING] Could not fully delete install folder on first attempt.
+        echo            Retrying...
+        timeout /t 1 /nobreak >nul 2>&1
+        rd /s /q "%INSTALL_DIR%" >nul 2>&1
+        
+        if exist "%INSTALL_DIR%" (
+            echo  [WARNING] Some files may still exist at:
+            echo            %INSTALL_DIR%
+            echo            You may need to manually delete this folder.
+        ) else (
+            echo  Installation folder deleted.
+        )
     ) else (
         echo  Installation folder deleted.
     )
