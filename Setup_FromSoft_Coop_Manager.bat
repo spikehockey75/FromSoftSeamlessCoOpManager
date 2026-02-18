@@ -29,8 +29,24 @@ if exist "%~dp0server.py" (
     goto :skip_download
 )
 
+REM --- Step 0: Kill any running Python processes ---------------------
+echo  [0/7] Stopping any running instances...
+echo.
+
+taskkill /IM pythonw.exe /F /FI "WINDOWTITLE eq FromSoft*" >nul 2>&1
+taskkill /IM python.exe /F /FI "WINDOWTITLE eq FromSoft*" >nul 2>&1
+
+REM Also try WMIC for more reliable filtering
+for /f "tokens=2" %%A in ('wmic process list brief ^| findstr /i "python" ^| findstr /i "fromsoft"') do (
+    taskkill /PID %%A /F >nul 2>&1
+)
+
+timeout /t 1 /nobreak >nul 2>&1
+echo        Proceeding with installation...
+echo.
+
 REM --- Step 1: Check for Python -----------------------------------
-echo  [1/6] Checking for Python...
+echo  [1/7] Checking for Python...
 echo.
 
 python --version >nul 2>&1
@@ -106,7 +122,7 @@ echo         Found: %PYVER%
 echo.
 
 REM --- Step 2: Download application files -------------------------
-echo  [2/6] Downloading application files...
+echo  [2/7] Downloading application files...
 echo.
 
 if exist "%EXTRACT_DIR%" rd /s /q "%EXTRACT_DIR%"
@@ -124,7 +140,7 @@ echo        Download complete.
 echo.
 
 REM --- Step 3: Extract and install --------------------------------
-echo  [3/6] Installing application...
+echo  [3/7] Installing application...
 echo.
 
 echo        Extracting files...
@@ -175,7 +191,7 @@ REM Change to the install directory for remaining steps
 cd /d "%INSTALL_DIR%"
 
 REM --- Step 4: Create virtual environment -------------------------
-echo  [4/6] Setting up virtual environment...
+echo  [4/7] Setting up virtual environment...
 echo.
 
 if not exist ".venv\Scripts\activate.bat" (
@@ -195,7 +211,7 @@ if not exist ".venv\Scripts\activate.bat" (
 echo.
 
 REM --- Step 5: Install dependencies -------------------------------
-echo  [5/6] Installing dependencies...
+echo  [5/7] Installing dependencies...
 echo.
 
 call .venv\Scripts\activate.bat
@@ -215,7 +231,7 @@ if errorlevel 1 (
 echo.
 
 REM --- Step 6: Create launcher scripts ----------------------------
-echo  [6/6] Creating launcher scripts and desktop shortcut...
+echo  [6/7] Creating launcher scripts and desktop shortcut...
 echo.
 
 set "SCRIPT_DIR=%INSTALL_DIR%\"
