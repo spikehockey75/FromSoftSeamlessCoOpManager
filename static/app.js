@@ -54,6 +54,41 @@ function closeConfirm() {
     if (_confirmResolve) { _confirmResolve(false); _confirmResolve = null; }
 }
 
+// ─── Version Prompt modal ────────────────────────────────────
+let _versionPromptResolve = null;
+function showVersionPrompt(title, defaultValue = "") {
+    return new Promise(resolve => {
+        _versionPromptResolve = resolve;
+        
+        const modal = $("#version-prompt-modal");
+        const input = $("#version-prompt-input");
+        const okBtn = $("#version-prompt-ok");
+        const cancelBtn = modal.querySelector(".btn-muted");
+        
+        $("#version-prompt-title").textContent = title;
+        input.value = defaultValue;
+        input.focus();
+        input.select();
+        
+        // Handle Enter key
+        input.onkeypress = (e) => {
+            if (e.key === "Enter") closeVersionPrompt(true);
+        };
+        
+        okBtn.onclick = () => closeVersionPrompt(true);
+        cancelBtn.onclick = () => closeVersionPrompt(false);
+        
+        show(modal);
+    });
+}
+function closeVersionPrompt(confirmed) {
+    const modal = $("#version-prompt-modal");
+    const input = $("#version-prompt-input");
+    const result = confirmed ? input.value.trim() : null;
+    hide(modal);
+    if (_versionPromptResolve) { _versionPromptResolve(result); _versionPromptResolve = null; }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────
 function prettifyKey(key) {
     return key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
@@ -175,17 +210,24 @@ async function doScan() {
 // ─── Load existing config on page load ───────────────────────
 async function loadConfig() {
     try {
+        console.log("[loadConfig] Fetching /api/games");
         const res = await fetch("/api/games");
         const cfg = await res.json();
+        console.log("[loadConfig] Response:", cfg);
+        console.log("[loadConfig] Games count:", cfg.games ? Object.keys(cfg.games).length : 0);
         if (cfg.games && Object.keys(cfg.games).length > 0) {
+            console.log("[loadConfig] Found games, calling handleConfig");
             handleConfig(cfg);
             // Fetch player counts asynchronously
             fetchPlayerCounts();
         } else if (!cfg.last_scan) {
+            console.log("[loadConfig] No games, running scan");
             // First launch — no games found and never scanned before: auto-scan
             doScan();
         }
-    } catch (_) {}
+    } catch (err) {
+        console.error("[loadConfig] Error:", err);
+    }
 }
 
 // ─── Fetch and update player counts ──────────────────────────
@@ -200,13 +242,93 @@ async function fetchPlayerCounts() {
                 currentGames[gameId].player_count = countData.player_count;
             }
         }
-        // Rebuild game home to display updated player counts
-        const ids = Object.keys(currentGames);
-        if (ids.length > 0) {
-            buildGameHome(ids);
+        // Update displayed counts
+        if (activeTab) {
+            const cards = document.querySelectorAll(".home-card");
+            for (const card of cards) {
+                const gid = card.dataset.gameId;
+                if (currentGames[gid]) {
+                    const count = currentGames[gid].player_count;
+                    const countEl = card.querySelector(".player-count");
+                    if (countEl && count !== null && count !== undefined) {
+                        countEl.innerHTML = `<span class="player-badge">${count.toLocaleString()} playing</span>`;
+                    }
+                }
+            }
         }
+    } catch (_) {}
+}
+
+// ─── Check for mod updates ──────────────────────────────────
+async function checkModUpdate(gameId) {
+    /**
+     * Check if a specific mod has an available update.
+     * Returns: { installed_version, latest_version, has_update, ... }
+     */
+    try {
+        const url = `/api/mod/${gameId}/check-update?_=${Date.now()}`;
+        console.debug(`[Update Check] Fetching: ${url}`);
+        const res = await fetch(url);
+        console.debug(`[Update Check] Response status: ${res.status}`);
+        
+        if (!res.ok) {
+            console.warn(`[Update Check] Failed for ${gameId}: HTTP ${res.status}`);
+            return null;
+        }
+        const data = await res.json();
+        console.debug(`[Update Check] Success for ${gameId}:`, data);
+        return data;
     } catch (err) {
-        console.warn("Failed to fetch player counts:", err);
+        console.warn(`[Update Check] Error for ${gameId}:`, err);
+        return null;
+    }
+}
+
+async function checkAllModUpdates() {
+    /**
+     * Check all mods for available updates.
+     * Returns: { total_checked, updates: [...] }
+     */
+    try {
+        const res = await fetch("/api/mod/check-all-updates?_=" + Date.now());
+        if (!res.ok) {
+            console.warn("Failed to check all mod updates");
+            return null;
+        }
+        return await res.json();
+    } catch (err) {
+        console.warn("Error checking all mod updates:", err);
+        return null;
+    }
+}
+
+// ─── Install mod update ─────────────────────────────────────
+async function installModUpdate(gameId, buttonEl) {
+    /**
+     * Install a mod update from Nexus Mods
+     * Workflow: backup settings → remove old → extract new → restore settings
+     */
+    try {
+        // Disable button and show loading state
+        buttonEl.disabled = true;
+        buttonEl.textContent = "Installing...";
+        const originalText = buttonEl.textContent;
+        
+        // For now, show a message that user needs to download manually
+        // In a real scenario, we would:
+        // 1. Get download URL from mod info
+        // 2. Call /api/mod/{gameId}/install-update with the URL
+        // 3. Show progress
+        
+        toast("This feature requires manual mod download from Nexus Mods for now.\nWe're working on automating this!", "info");
+        buttonEl.disabled = false;
+        buttonEl.textContent = originalText;
+        
+    } catch (err) {
+        console.error("[Install] Error:", err);
+        toast("Installation failed: " + err.message, "error");
+        buttonEl.disabled = false;
+        buttonEl.textContent = "Install";
     }
 }
 
@@ -227,9 +349,11 @@ function stopPlayerCountRefresh() {
 
 // ─── Process config data ─────────────────────────────────────
 function handleConfig(cfg) {
+    console.log("[handleConfig] Starting");
     setLoading(false);
     currentGames = cfg.games || {};
     const ids = Object.keys(currentGames);
+    console.log("[handleConfig] Game IDs:", ids);
 
     if (cfg.last_scan) {
         const d = new Date(cfg.last_scan);
@@ -237,24 +361,31 @@ function handleConfig(cfg) {
     }
 
     if (ids.length === 0) {
+        console.log("[handleConfig] No games, showing no-games message");
         show(noGames); hide(gameHome); hide(tabBar);
         stopPlayerCountRefresh();
         return;
     }
 
+    console.log("[handleConfig] Showing games, hiding landing/noGames/tabBar");
     hide(landing); hide(noGames); hide(tabBar);
     panels.innerHTML = "";
     activeTab = null;
+    console.log("[handleConfig] Calling buildGameHome with", ids.length, "games");
     buildGameHome(ids);
+    console.log("[handleConfig] buildGameHome completed");
     startPlayerCountRefresh();
+    console.log("[handleConfig] Done");
 }
 
 // ================================================================
 // Game Home — card grid landing page
 // ================================================================
 function buildGameHome(gameIds) {
+    console.log("[buildGameHome] Starting with", gameIds.length, "games");
     gameHome.innerHTML = "";
     for (const id of gameIds) {
+        console.log("[buildGameHome] Creating card for", id);
         const game = currentGames[id];
         const card = document.createElement("div");
         card.className = "home-card";
@@ -285,6 +416,40 @@ function buildGameHome(gameIds) {
         badge.className = `home-card-badge ${game.mod_installed ? "badge-installed" : "badge-missing"}`;
         badge.textContent = game.mod_installed ? "Co-op Mod Installed" : "Mod Not Installed";
         info.appendChild(badge);
+
+        // Update status badge (shown only if mod is installed)
+        if (game.mod_installed) {
+            const updateBadge = document.createElement("div");
+            updateBadge.className = "home-card-update-badge";
+            updateBadge.innerHTML = '<span class="spinner" style="width:14px; height:14px;"></span> Checking...';
+            info.appendChild(updateBadge);
+
+            // Check for updates asynchronously
+            checkModUpdate(id).then(updateInfo => {
+                if (!updateInfo || updateInfo.error) {
+                    updateBadge.style.display = "none";
+                    return;
+                }
+
+                const hasUpdate = updateInfo.has_update || updateInfo.update_available;
+                if (hasUpdate) {
+                    updateBadge.className = "home-card-update-badge update-available";
+                    updateBadge.innerHTML = `
+                        <span style="color: #ff9800; font-weight: bold;">
+                            ⚠️ Update available!
+                        </span>
+                        <span style="font-size: 0.75em; color: #666; display: block; margin-top: 2px;">
+                            ${updateInfo.installed_version || 'unknown'} → ${updateInfo.latest_version || 'unknown'}
+                        </span>
+                    `;
+                } else if (updateInfo.installed_version && updateInfo.latest_version) {
+                    updateBadge.className = "home-card-update-badge up-to-date";
+                    updateBadge.innerHTML = `<span style="color: #4caf50;">✓ Latest Version: <strong>v${updateInfo.latest_version}</strong></span>`;
+                } else {
+                    updateBadge.style.display = "none";
+                }
+            });
+        }
 
         // Player count display
         const playerEl = document.createElement("div");
@@ -374,8 +539,11 @@ function buildGameHome(gameIds) {
         info.appendChild(actions);
         card.appendChild(info);
         gameHome.appendChild(card);
+        console.log("[buildGameHome] Card added for", id);
     }
+    console.log("[buildGameHome] All cards created, showing gameHome");
     show(gameHome);
+    console.log("[buildGameHome] gameHome is now visible");
 }
 
 // ─── Navigate into a game's detail view ──────────────────────
@@ -1187,6 +1355,7 @@ async function loadModInstallerUI(gameId, container) {
 }
 
 function renderModInstallerUI(gameId, data, container) {
+    console.debug(`[renderModInstallerUI] Starting for ${gameId}. Mod installed: ${data.mod_installed}`);
     container.innerHTML = "";
 
     // ── Status badge ──
@@ -1196,6 +1365,80 @@ function renderModInstallerUI(gameId, data, container) {
         ? '&#x2714; Mod installed'
         : '&#x2716; Mod not installed';
     container.appendChild(statusBar);
+
+    // ── Check for mod updates (async) ──
+    if (data.mod_installed) {
+        console.debug(`[UI] Mod installed for ${gameId}, starting update check`);
+        const updateCheckContainer = document.createElement("div");
+        updateCheckContainer.className = "mod-update-check";
+        updateCheckContainer.innerHTML = '<div class="spinner" style="width:20px; height:20px;"></div><span>Checking for updates...</span>';
+        container.appendChild(updateCheckContainer);
+
+        checkModUpdate(gameId).then(updateInfo => {
+            console.debug(`[UI] Update check returned:`, updateInfo);
+            if (!updateInfo) {
+                console.warn(`[UI] No update info returned for ${gameId}`);
+                updateCheckContainer.innerHTML = '<span style="color: var(--text-muted);">Unable to check for updates</span>';
+                return;
+            }
+
+            if (updateInfo.error) {
+                if (updateInfo.requires_auth) {
+                    updateCheckContainer.innerHTML = `
+                        <div style="padding: 0.8rem 1rem; background: #f3e5f5; border-left: 4px solid #9c27b0; border-radius: 4px; font-size: 0.9em;">
+                            <div style="color: #9c27b0; font-weight: bold; margin-bottom: 0.3rem;">ℹ️ Check Nexus Mods for updates</div>
+                            <div style="color: #555; font-size: 0.85em;">
+                                For the latest mod version, visit: <a href="${data.nexus_url}" target="_blank" style="color: #9c27b0; text-decoration: underline;">${data.nexus_url}</a>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    updateCheckContainer.innerHTML = `<span style="color: var(--text-muted);">${updateInfo.error}</span>`;
+                }
+                return;
+            }
+
+            const hasUpdate = updateInfo.has_update || updateInfo.update_available;
+            if (hasUpdate && updateInfo.latest_version) {
+                updateCheckContainer.className = "mod-update-available";
+                let warning = "";
+                // Warn if installed is 3-part and latest is 2-part, regardless of major/minor match
+                if (
+                    updateInfo.installed_version &&
+                    /^\d+\.\d+\.\d+$/.test(updateInfo.installed_version) &&
+                    /^\d+\.\d+$/.test(updateInfo.latest_version)
+                ) {
+                    warning = `<div style='color:#e53935;font-size:0.9em;margin-top:6px;'>⚠️ Version format mismatch: Nexus shows <b>${updateInfo.latest_version}</b> but you have <b>${updateInfo.installed_version}</b>. This may be a typo on Nexus.</div>`;
+                }
+                updateCheckContainer.innerHTML = `
+                    <div style="padding: 1rem; background: #fff8e6; border-left: 4px solid #ff9800; border-radius: 4px;">
+                        <div style="font-weight: bold; color: #ff9800; margin-bottom: 0.5rem;">
+                            &#x1F6A8; New mod version available!
+                        </div>
+                        <div style="font-size: 0.9em; color: #333;">
+                            Installed: <strong>${updateInfo.installed_version || 'unknown'}</strong>
+                            <span style="margin: 0 0.5rem;">→</span>
+                            Latest: <strong>${updateInfo.latest_version}</strong>
+                        </div>
+                        ${warning}
+                        ${updateInfo.release_date ? `<div style="font-size: 0.85em; color: #666; margin-top: 0.3rem;">Released: ${new Date(updateInfo.release_date).toLocaleDateString()}</div>` : ''}
+                        <a href="${updateInfo.nexus_url || data.nexus_url}" target="_blank" style="display: inline-block; margin-top: 0.5rem; color: #ff9800; text-decoration: underline;">
+                            Download Update
+                        </a>
+                    </div>
+                `;
+            } else if (updateInfo.installed_version && updateInfo.latest_version) {
+                updateCheckContainer.className = "mod-up-to-date";
+                updateCheckContainer.innerHTML = `
+                    <div style="padding: 0.5rem 1rem; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 4px; font-size: 0.9em;">
+                        &#x2714; Mod is up-to-date (v${updateInfo.installed_version})
+                    </div>
+                `;
+            } else {
+                updateCheckContainer.remove();
+            }
+        });
+    }
 
     // ── Nexus Mods download link ──
     const nexusCard = document.createElement("div");
@@ -1275,7 +1518,44 @@ function renderModInstallerUI(gameId, data, container) {
                     });
                     const d = await res.json();
                     if (res.ok) {
-                        toast(d.message, "success");
+                        // Show success message with backup info if applicable
+                        if (d.backup_performed) {
+                            const backupMsg = d.backup_path ? `\n\nYour settings have been backed up to:\n${d.backup_path}` : "";
+                            toast(d.message + backupMsg, "success");
+                        } else {
+                            toast(d.message, "success");
+                        }
+                        
+                        if (d.installed_version && d.installed_version_source === "zip_name") {
+                            toast(`Installed version set to ${d.installed_version} (from zip name)`, "success");
+                        } else {
+                            // GET LATEST VERSION FROM API AND ASK USER TO CONFIRM
+                            let latestVersion = "1.0.0"; // fallback
+                            try {
+                                const updateInfo = await checkModUpdate(gameId);
+                                if (updateInfo && updateInfo.latest_version) {
+                                    latestVersion = updateInfo.latest_version;
+                                }
+                            } catch (ue) {
+                                console.warn("Could not fetch latest version:", ue);
+                            }
+                            
+                            // Prompt user to confirm version installed
+                            const versionPrompt = await showVersionPrompt("What version did you install?", latestVersion);
+                            if (versionPrompt) {
+                                try {
+                                    const versionRes = await fetch(`/api/mod/${gameId}/set-installed-version/${encodeURIComponent(versionPrompt)}`, {
+                                        method: "POST"
+                                    });
+                                    if (versionRes.ok) {
+                                        toast(`Marked as version ${versionPrompt}`, "success");
+                                    }
+                                } catch (ve) {
+                                    console.warn("Could not set version:", ve);
+                                }
+                            }
+                        }
+                        
                         if (currentGames[gameId]) {
                             currentGames[gameId].mod_installed = d.mod_installed;
                             currentGames[gameId].launcher_exists = d.launcher_exists;
@@ -1287,10 +1567,13 @@ function renderModInstallerUI(gameId, data, container) {
                         // Reveal hidden tabs and switch to Settings
                         if (d.mod_installed && gamePanel) {
                             if (gamePanel._updateTabVisibility) gamePanel._updateTabVisibility();
-                            if (gamePanel._activateSub) {
-                                gamePanel._activateSub(1); // Switch to Settings tab
-                                if (gamePanel._settingsPanel) loadSettings(gameId, gamePanel._settingsPanel);
-                            }
+                            // Delay switching to Settings tab and loading settings to ensure extraction is complete
+                            setTimeout(() => {
+                                if (gamePanel._activateSub) {
+                                    gamePanel._activateSub(1); // Switch to Settings tab
+                                    if (gamePanel._settingsPanel) loadSettingsInto(gameId, gamePanel._settingsPanel);
+                                }
+                            }, 500);
                         } else {
                             loadModInstallerUI(gameId, container);
                         }
@@ -1420,6 +1703,9 @@ window.addEventListener("beforeunload", (e) => {
 
 // ─── Boot ────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
+    console.log("DOMContentLoaded fired");
+    console.log("gameHome element:", gameHome);
+    console.log("landing element:", landing);
     loadVersion();
-    loadConfig();
+    loadConfig().catch(err => console.error("loadConfig error:", err));
 });

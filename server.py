@@ -16,12 +16,26 @@ from datetime import datetime
 from pathlib import Path
 from flask import Flask, render_template, jsonify, request
 
+# Import the mod update utility
+from mod_updater import check_mod_update, check_all_mods_for_updates, version_compare, get_nexus_mod_info
+from mod_installer import install_mod_update
+
 app = Flask(__name__)
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+
+def _extract_version_from_filename(filename):
+    """Extract semantic version from a filename like 'modname_v1.2.3.zip'."""
+    base = os.path.basename(filename)
+    name, _ext = os.path.splitext(base)
+    matches = re.findall(r"v?(\d+\.\d+(?:\.\d+){0,2})", name, flags=re.IGNORECASE)
+    if not matches:
+        return None
+    return matches[-1]
 
 GAME_DEFINITIONS = {
     "ac6": {
@@ -1056,7 +1070,11 @@ def api_mod_status(game_id):
 
 @app.route("/api/mod/<game_id>/install", methods=["POST"])
 def api_mod_install(game_id):
-    """Extract a mod zip from Downloads into the game directory."""
+    """
+    Install/update a mod from a zip file with backup/restore workflow.
+    If mod is already installed: backup settings → remove old → extract new → restore settings
+    If mod is new: extract files
+    """
     gdef = GAME_DEFINITIONS.get(game_id)
     if not gdef:
         return jsonify({"error": "Unknown game"}), 404
@@ -1082,42 +1100,84 @@ def api_mod_install(game_id):
     if not zipfile.is_zipfile(zip_path):
         return jsonify({"error": f"Not a valid zip file: {safe_name}"}), 400
 
-    extract_target = os.path.join(game["install_path"], gdef["mod_extract_relative"])
-    os.makedirs(extract_target, exist_ok=True)
-
+    install_path = game["install_path"]
+    
     try:
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            # Security: check for path traversal in zip entries
-            for member in zf.namelist():
-                resolved = os.path.realpath(os.path.join(extract_target, member))
-                if not resolved.startswith(os.path.realpath(extract_target)):
-                    return jsonify({"error": f"Zip contains unsafe path: {member}"}), 400
+        # Always perform backup/restore workflow if config/settings file exists
+        config_rel_path = gdef.get("config_relative", "")
+        config_path = os.path.join(install_path, config_rel_path)
+        backup_info = {}
+        if os.path.isfile(config_path):
+            # Use the backup/restore workflow for updates or reinstalls
+            print(f"[Install] Backup/restore workflow: backing up settings for {game_id}")
+            result = install_mod_update(zip_path, install_path, gdef)
+            if not result["success"]:
+                return jsonify({
+                    "status": "error",
+                    "message": result["message"],
+                    "steps": result.get("steps", [])
+                }), 500
+            backup_info = {
+                "backup_performed": True,
+                "backup_path": result.get("backup_path", ""),
+                "steps": result.get("steps", [])
+            }
+            extracted_count = sum(s.get("extracted_count", 0) for s in result.get("steps", []) if s.get("step") == "extract_new_files")
+            is_update = True
+        else:
+            # Fresh install: just extract the files
+            print(f"[Install] Fresh install mode for {game_id}")
+            extract_target = os.path.join(install_path, gdef["mod_extract_relative"])
+            os.makedirs(extract_target, exist_ok=True)
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                # Security: check for path traversal in zip entries
+                for member in zf.namelist():
+                    resolved = os.path.realpath(os.path.join(extract_target, member))
+                    if not resolved.startswith(os.path.realpath(extract_target)):
+                        return jsonify({"error": f"Zip contains unsafe path: {member}"}), 400
+                zf.extractall(extract_target)
+                extracted_count = len([n for n in zf.namelist() if not n.endswith("/")])
+            is_update = False
+        
+        # Re-check mod status and update config
+        config_path = os.path.join(install_path, gdef["config_relative"])
+        launcher_path = os.path.join(install_path, gdef["launcher_relative"])
+        mod_installed = os.path.isfile(config_path)
 
-            zf.extractall(extract_target)
-            extracted_count = len([n for n in zf.namelist() if not n.endswith("/")])
+        detected_version = _extract_version_from_filename(safe_name)
+
+        if game_id in cfg.get("games", {}):
+            cfg["games"][game_id]["mod_installed"] = mod_installed
+            cfg["games"][game_id]["config_path"] = os.path.normpath(config_path) if mod_installed else None
+            cfg["games"][game_id]["launcher_exists"] = os.path.isfile(launcher_path)
+            cfg["games"][game_id]["launcher_path"] = os.path.normpath(launcher_path) if os.path.isfile(launcher_path) else None
+            if detected_version:
+                cfg["games"][game_id]["installed_mod_version"] = detected_version
+            save_config(cfg)
+
+        response = {
+            "status": "ok",
+            "message": f"Installed {extracted_count} file(s) from {safe_name}",
+            "extracted": extracted_count,
+            "zip_name": safe_name,
+            "mod_installed": mod_installed,
+            "launcher_exists": os.path.isfile(launcher_path),
+        }
+
+        if detected_version:
+            response["installed_version"] = detected_version
+            response["installed_version_source"] = "zip_name"
+        
+        # Include backup info if this was an update
+        if is_update:
+            response.update(backup_info)
+            response["message"] = f"Mod updated successfully! Settings have been backed up and restored. (Extracted {extracted_count} files)"
+        
+        return jsonify(response)
+
     except Exception as e:
-        return jsonify({"error": f"Extraction failed: {str(e)}"}), 500
-
-    # Re-check mod status and update config
-    config_path = os.path.join(game["install_path"], gdef["config_relative"])
-    launcher_path = os.path.join(game["install_path"], gdef["launcher_relative"])
-    mod_installed = os.path.isfile(config_path)
-
-    if game_id in cfg.get("games", {}):
-        cfg["games"][game_id]["mod_installed"] = mod_installed
-        cfg["games"][game_id]["config_path"] = os.path.normpath(config_path) if mod_installed else None
-        cfg["games"][game_id]["launcher_exists"] = os.path.isfile(launcher_path)
-        cfg["games"][game_id]["launcher_path"] = os.path.normpath(launcher_path) if os.path.isfile(launcher_path) else None
-        save_config(cfg)
-
-    return jsonify({
-        "status": "ok",
-        "message": f"Installed {extracted_count} file(s) from {safe_name}",
-        "extracted": extracted_count,
-        "zip_name": safe_name,
-        "mod_installed": mod_installed,
-        "launcher_exists": os.path.isfile(launcher_path),
-    })
+        print(f"[Install] Error: {str(e)}")
+        return jsonify({"error": f"Installation failed: {str(e)}"}), 500
 
 
 @app.route("/api/mod/<game_id>/cleanup", methods=["POST"])
@@ -1140,6 +1200,239 @@ def api_mod_cleanup(game_id):
         return jsonify({"status": "ok", "message": f"Deleted {safe_name} from Downloads"})
     except Exception as e:
         return jsonify({"error": f"Failed to delete: {str(e)}"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Mod Update Checking API routes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/mod/<game_id>/check-update")
+def api_check_mod_update(game_id):
+    """Check if a mod has an available update on Nexus Mods."""
+    gdef = GAME_DEFINITIONS.get(game_id)
+    if not gdef:
+        return jsonify({"error": "Unknown game"}), 404
+
+    cfg = load_config()
+    game = cfg.get("games", {}).get(game_id)
+    if not game:
+        return jsonify({"error": "Game not found"}), 404
+
+    if not game.get("mod_installed"):
+        return jsonify({
+            "game_id": game_id,
+            "installed_version": None,
+            "has_update": False,
+            "error": "Mod not installed"
+        })
+
+    install_path = game.get("install_path")
+    if not install_path:
+        return jsonify({"error": "Game install path not configured"}), 400
+
+    # Get API key from config
+    api_key = cfg.get("nexus_api_key")
+    
+    # Check for update
+    installed_override = game.get("installed_mod_version")
+    update_info = check_mod_update(
+        install_path,
+        game_id,
+        gdef,
+        api_key,
+        installed_override=installed_override,
+    )
+    return jsonify(update_info)
+
+
+@app.route("/api/mod/check-all-updates")
+def api_check_all_mod_updates():
+    """Check all installed mods for available updates."""
+    cfg = load_config()
+    # Get API key from config
+    api_key = cfg.get("nexus_api_key")
+    updates = check_all_mods_for_updates(cfg, api_key)
+    
+    # Filter to only return installed mods with results
+    updated_list = [u for u in updates if u.get("installed_version") is not None or not u.get("error")]
+    
+    return jsonify({
+        "total_checked": len([g for g in cfg.get("games", {}).values() if g.get("mod_installed")]),
+        "updates": updated_list,
+        "checked_at": datetime.now().isoformat(),
+    })
+
+
+@app.route("/api/mod/compare-versions")
+def api_compare_versions():
+    """Compare two version strings. Returns -1, 0, or 1."""
+    v1 = request.args.get("v1", "0.0.0")
+    v2 = request.args.get("v2", "0.0.0")
+    
+    result = version_compare(v1, v2)
+    return jsonify({
+        "v1": v1,
+        "v2": v2,
+        "comparison": result,
+        "meaning": (
+            f"{v1} < {v2}" if result < 0 else
+            f"{v1} == {v2}" if result == 0 else
+            f"{v1} > {v2}"
+        )
+    })
+
+
+# ---------------------------------------------------------------------------
+# Test Mode — Set fake versions for testing without reinstalling
+# ---------------------------------------------------------------------------
+
+@app.route("/api/test/set-version/<game_id>/<version>", methods=["POST"])
+def api_test_set_version(game_id, version):
+    """Set a fake installed version for testing purposes (TEST MODE ONLY)."""
+    from mod_updater import set_test_version
+    set_test_version(game_id, version)
+    return jsonify({
+        "status": "ok",
+        "message": f"Test version for {game_id} set to {version}",
+        "game_id": game_id,
+        "test_version": version
+    })
+
+
+@app.route("/api/test/clear-versions", methods=["POST"])
+def api_test_clear_versions():
+    """Clear all test version overrides (TEST MODE ONLY)."""
+    from mod_updater import clear_test_versions
+    clear_test_versions()
+    return jsonify({
+        "status": "ok",
+        "message": "All test versions cleared"
+    })
+
+
+@app.route("/api/test/get-versions")
+def api_test_get_versions():
+    """Get current test version overrides (TEST MODE ONLY)."""
+    from mod_updater import TEST_VERSION_OVERRIDES
+    return jsonify({
+        "test_versions": TEST_VERSION_OVERRIDES,
+        "message": "Current test version overrides"
+    })
+
+
+@app.route("/api/mod/<game_id>/set-installed-version/<version>", methods=["POST"])
+def api_set_installed_version(game_id, version):
+    """
+    Set/update the installed version for a mod.
+    Used after installation to mark what version was just installed.
+    """
+    gdef = GAME_DEFINITIONS.get(game_id)
+    if not gdef:
+        return jsonify({"error": "Unknown game"}), 404
+    
+    try:
+        cfg = load_config()
+        if game_id not in cfg.get("games", {}):
+            return jsonify({"error": "Game not found"}), 404
+
+        cfg["games"][game_id]["installed_mod_version"] = version
+        save_config(cfg)
+
+        # Clear test override if it was set
+        from mod_updater import set_test_version
+        set_test_version(game_id, None)
+        return jsonify({
+            "status": "ok",
+            "message": f"Installed version for {game_id} set to {version}",
+            "game_id": game_id,
+            "version": version
+        })
+    except Exception as e:
+        return jsonify({
+            "error": f"Failed to set version: {str(e)}"
+        }), 500
+
+
+# ---------------------------------------------------------------------------
+# Mod Installation
+# ---------------------------------------------------------------------------
+
+@app.route("/api/mod/<game_id>/install-update", methods=["POST"])
+def api_install_mod_update(game_id):
+    """
+    Download and install a mod update from Nexus Mods.
+    Workflow: backup settings → remove old files → extract new → restore settings
+    """
+    gdef = GAME_DEFINITIONS.get(game_id)
+    if not gdef:
+        return jsonify({"error": "Unknown game"}), 404
+    
+    cfg = load_config()
+    game = cfg.get("games", {}).get(game_id)
+    if not game:
+        return jsonify({"error": "Game not found"}), 404
+    
+    if not game.get("mod_installed"):
+        return jsonify({"error": "Mod not installed"}), 400
+    
+    try:
+        install_path = game.get("install_path")
+        if not install_path:
+            return jsonify({"error": "Game install path not configured"}), 400
+        
+        # Get the download URL from request body
+        data = request.get_json() or {}
+        download_url = data.get("download_url")
+        
+        if not download_url:
+            return jsonify({"error": "No download URL provided"}), 400
+        
+        # Create temp directory for download
+        temp_dir = os.path.join(install_path, ".mod_download_temp")
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        try:
+            # Download the mod zip file
+            zip_path = os.path.join(temp_dir, "mod_update.zip")
+            print(f"[ModInstaller] Downloading from {download_url}")
+            
+            req = urllib.request.Request(download_url, headers={"User-Agent": "FromSoft-Coop-Manager/1.0"})
+            with urllib.request.urlopen(req, timeout=60) as response:
+                with open(zip_path, 'wb') as out_file:
+                    out_file.write(response.read())
+            
+            print(f"[ModInstaller] Download complete, installing...")
+            
+            # Install the mod (backup, remove, extract, restore)
+            result = install_mod_update(zip_path, install_path, gdef)
+            
+            # Clean up temp directory
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                print(f"[ModInstaller] Warning: Could not clean temp dir: {e}")
+            
+            if result["success"]:
+                result["message"] = "Mod successfully updated! All settings preserved."
+            
+            return jsonify(result)
+        
+        except urllib.error.URLError as e:
+            return jsonify({
+                "success": False,
+                "message": f"Failed to download mod: {str(e)}"
+            }), 500
+        except Exception as e:
+            return jsonify({
+                "success": False,
+                "message": f"Installation error: {str(e)}"
+            }), 500
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Request error: {str(e)}"
+        }), 500
 
 
 # ---------------------------------------------------------------------------

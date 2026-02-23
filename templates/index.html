@@ -71,6 +71,19 @@
     </div>
 </div>
 
+<div id="version-prompt-modal" class="modal-overlay hidden">
+    <div class="modal" style="width: 400px;">
+        <div class="modal-title" id="version-prompt-title">Enter Version</div>
+        <div class="modal-body">
+            <input type="text" id="version-prompt-input" placeholder="e.g., 1.9.4" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-muted" onclick="closeVersionPrompt(false)">Cancel</button>
+            <button class="btn btn-accent" id="version-prompt-ok">Confirm</button>
+        </div>
+    </div>
+</div>
+
 <script src="/static/app.js"></script>
 </body>
 </html>

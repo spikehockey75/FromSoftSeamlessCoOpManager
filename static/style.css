@@ -241,6 +241,35 @@ header h1 { font-size: 1.15rem; font-weight: 600; letter-spacing: .02em; }
     background: rgba(231,76,60,.15);
     color: #e74c3c;
 }
+
+/* ─── Update status badge on dashboard ───────────────────── */
+.home-card-update-badge {
+    font-size: .7rem;
+    padding: .3rem .5rem;
+    border-radius: 3px;
+    background: rgba(33, 150, 243, .1);
+    color: #2196f3;
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+    animation: fadeIn .3s ease-in;
+}
+.home-card-update-badge.update-available {
+    background: rgba(255, 152, 0, .15);
+    color: #ff9800;
+    border-left: 2px solid #ff9800;
+    padding-left: .4rem;
+}
+.home-card-update-badge.up-to-date {
+    background: rgba(76, 175, 80, .15);
+    color: #4caf50;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-3px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 .home-card-players {
     font-size: .75rem;
     color: #bdc3c7;
@@ -838,6 +867,49 @@ code { background: rgba(255,255,255,.06); padding: .1em .3em; border-radius: 3px
     color: #ff6b6b;
 }
 .btn-danger-sm:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ─── Mod Update Checking ─────────────────────────────────── */
+.mod-update-check {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .8rem 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: .8rem;
+    font-size: .9rem;
+    color: var(--text-muted);
+}
+
+.mod-update-available {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin-bottom: .8rem;
+}
+
+.mod-up-to-date {
+    background: #e8f5e9;
+    border-left: 4px solid #4caf50;
+    color: #222 !important;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    margin-bottom: .8rem;
+}
+
+.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
 
 /* ─── Responsive tweaks ───────────────────────────────────── */
 @media (max-width: 640px) {
