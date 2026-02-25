@@ -16,7 +16,7 @@ from app.ui.nexus_widget import NexusWidget
 
 
 class GameButton(QPushButton):
-    """Sidebar game button with icon + name + play button + optional update badge."""
+    """Sidebar game button with logo + player count + play button + optional update badge."""
 
     launch_requested = Signal(str)  # game_id
 
@@ -26,39 +26,32 @@ class GameButton(QPushButton):
         self._game_info = game_info
         self.setObjectName("sidebar_btn")
         self.setCheckable(True)
-        self.setFixedHeight(48)
+        self.setFixedHeight(60)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._build()
 
     def _build(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 0, 6, 0)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 4, 6, 4)
+        layout.setSpacing(6)
 
-        # Game icon
-        self._icon_lbl = QLabel()
-        self._icon_lbl.setFixedSize(28, 28)
-        self._icon_lbl.setAlignment(Qt.AlignCenter)
-        self._icon_lbl.setStyleSheet(
-            "background:#2a2a4a;border-radius:4px;font-size:14px;"
-        )
-        self._icon_lbl.setText("🎮")
-        layout.addWidget(self._icon_lbl)
+        # Left column: logo + player count
+        left_col = QVBoxLayout()
+        left_col.setContentsMargins(0, 0, 0, 0)
+        left_col.setSpacing(2)
 
-        # Game name (short)
-        name = self._game_info.get("name", "")
-        short_names = {
-            "Elden Ring": "Elden Ring",
-            "Elden Ring Nightreign": "Nightreign",
-            "Dark Souls III": "Dark Souls III",
-            "Dark Souls Remastered": "DS Remastered",
-            "Armored Core 6": "Armored Core 6",
-        }
-        display = short_names.get(name, name)
+        self._logo_lbl = QLabel()
+        self._logo_lbl.setFixedHeight(32)
+        self._logo_lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self._logo_lbl.setStyleSheet("background:transparent;")
+        left_col.addWidget(self._logo_lbl)
 
-        self._name_lbl = QLabel(display)
-        self._name_lbl.setStyleSheet("font-size:12px;font-weight:600;color:#e0e0ec;background:transparent;")
-        layout.addWidget(self._name_lbl)
+        self._players_lbl = QLabel()
+        self._players_lbl.setStyleSheet("font-size:9px;color:#555577;background:transparent;")
+        self._players_lbl.setVisible(False)
+        left_col.addWidget(self._players_lbl)
+
+        layout.addLayout(left_col)
         layout.addStretch()
 
         # Update dot
@@ -85,14 +78,22 @@ class GameButton(QPushButton):
         self._play_btn.clicked.connect(lambda: self.launch_requested.emit(self._game_id))
         layout.addWidget(self._play_btn)
 
+    def set_player_count(self, count: int | None):
+        if count is not None:
+            self._players_lbl.setText(f"{count:,} playing")
+            self._players_lbl.setVisible(True)
+        else:
+            self._players_lbl.setVisible(False)
+
     def set_update_available(self, available: bool):
         self._update_dot.setVisible(available)
 
     def load_icon(self, icon_path: str):
         if os.path.isfile(icon_path):
-            pix = QPixmap(icon_path).scaled(28, 28, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self._icon_lbl.setPixmap(pix)
-            self._icon_lbl.setText("")
+            pix = QPixmap(icon_path)
+            # Scale to fit: max 120px wide, 32px tall
+            pix = pix.scaled(120, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self._logo_lbl.setPixmap(pix)
 
     @property
     def game_id(self):
@@ -110,6 +111,8 @@ class Sidebar(QWidget):
         self._config = config
         self._game_buttons: dict[str, GameButton] = {}
         self._current_game: str | None = None
+        self._games: dict = {}
+        self._fetching_counts = False
         self._pending: _queue.SimpleQueue = _queue.SimpleQueue()
         self.setObjectName("sidebar_frame")
         self.setFixedWidth(220)
@@ -117,6 +120,9 @@ class Sidebar(QWidget):
         self._poll_timer = QTimer(self)
         self._poll_timer.timeout.connect(self._poll_updates)
         self._poll_timer.start(200)
+        self._player_count_timer = QTimer(self)
+        self._player_count_timer.timeout.connect(self._refresh_player_counts)
+        self._player_count_timer.start(60000)
         self._start_me3_version_check()
 
     def _build(self):
@@ -219,14 +225,16 @@ class Sidebar(QWidget):
             btn.clicked.connect(lambda checked, gid=game_id: self._on_game_clicked(gid))
             btn.launch_requested.connect(lambda gid=game_id: self.launch_game.emit(gid))
 
-            # Load cover icon from cache
+            # Load logo icon from cache
             app_id = game_info.get("steam_app_id")
             if app_id:
-                cover_path = os.path.join(
+                resources_dir = os.path.join(
                     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                    "resources", "covers", f"{app_id}.jpg"
+                    "resources", "logos"
                 )
-                btn.load_icon(cover_path)
+                logo_path = os.path.join(resources_dir, f"{app_id}.png")
+                if os.path.isfile(logo_path):
+                    btn.load_icon(logo_path)
 
             self._games_layout.addWidget(btn)
             self._game_buttons[game_id] = btn
@@ -234,6 +242,12 @@ class Sidebar(QWidget):
         # Re-select current game if still present
         if self._current_game and self._current_game in self._game_buttons:
             self._game_buttons[self._current_game].setChecked(True)
+
+        # Store games for recurring player count refresh
+        self._games = games
+
+        # Fetch player counts in background
+        self._fetch_player_counts(games)
 
     def _on_game_clicked(self, game_id: str):
         for gid, btn in self._game_buttons.items():
@@ -247,6 +261,42 @@ class Sidebar(QWidget):
     def set_update_badge(self, game_id: str, available: bool):
         if game_id in self._game_buttons:
             self._game_buttons[game_id].set_update_available(available)
+
+    def _refresh_player_counts(self):
+        """Called by recurring timer — re-fetch counts if games are loaded."""
+        if self._games and not self._fetching_counts:
+            self._fetch_player_counts(self._games, logos=False)
+
+    def _fetch_player_counts(self, games: dict, logos: bool = True):
+        """Fetch Steam player counts (and optionally missing logos) in background."""
+        if self._fetching_counts:
+            return
+        self._fetching_counts = True
+        pending = self._pending
+        resources_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "resources", "logos"
+        )
+
+        def _work():
+            try:
+                from app.services.steam_service import get_player_count, download_logo
+                for game_id, game_info in games.items():
+                    app_id = game_info.get("steam_app_id")
+                    if app_id:
+                        # Download logo if missing (only on first call)
+                        if logos:
+                            logo_path = os.path.join(resources_dir, f"{app_id}.png")
+                            if not os.path.isfile(logo_path):
+                                if download_logo(app_id, logo_path):
+                                    pending.put(("logo_ready", game_id, logo_path))
+                        # Fetch player count
+                        count = get_player_count(app_id)
+                        pending.put(("player_count", game_id, count))
+            finally:
+                pending.put(("fetch_counts_done",))
+
+        threading.Thread(target=_work, daemon=True).start()
 
     def _start_me3_version_check(self):
         config = self._config
@@ -275,6 +325,16 @@ class Sidebar(QWidget):
                         self._me3_lbl.setStyleSheet(
                             "font-size:10px;color:#e74c3c;padding:0px 14px 6px 14px;"
                         )
+                elif item[0] == "logo_ready":
+                    game_id, path = item[1], item[2]
+                    if game_id in self._game_buttons:
+                        self._game_buttons[game_id].load_icon(path)
+                elif item[0] == "player_count":
+                    game_id, count = item[1], item[2]
+                    if game_id in self._game_buttons:
+                        self._game_buttons[game_id].set_player_count(count)
+                elif item[0] == "fetch_counts_done":
+                    self._fetching_counts = False
         except _queue.Empty:
             pass
 

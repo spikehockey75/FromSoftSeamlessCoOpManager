@@ -3,11 +3,11 @@ FromSoft Mod Manager — PySide6 Desktop Application
 Entry point.
 """
 
-import faulthandler
-faulthandler.enable()  # print Python stack on segfault
-
 import os
 import sys
+import faulthandler
+if sys.stderr is not None:
+    faulthandler.enable()
 import logging
 
 # Ensure the app directory is on the path when running from PyInstaller
@@ -84,6 +84,21 @@ def main():
             me3_path = find_me3_executable(config.get_me3_path())
             ME2MigrationDialog(merged, me3_path, config).exec()
         config.set("me2_migrated", True)
+
+    # One-time ME3 profile import (catches mods from Mod Engine Manager, etc.)
+    if not config.get("me3_profiles_imported"):
+        from app.core.me2_migrator import (scan_me3_profiles,
+                                           scan_game_folders as _scan_gf,
+                                           merge_scan_results as _merge)
+        me3_path = find_me3_executable(config.get_me3_path())
+        if me3_path:
+            me3_results = scan_me3_profiles(me3_path)
+            game_results = _scan_gf(config)
+            merged = _merge(me3_results, game_results)
+            if merged:
+                from app.ui.dialogs.me2_migration_dialog import ME2MigrationDialog
+                ME2MigrationDialog(merged, me3_path, config).exec()
+        config.set("me3_profiles_imported", True)
 
     # Main window
     from app.ui.main_window import MainWindow

@@ -28,6 +28,7 @@ class LaunchTab(QWidget):
         self._config = config
         self._gdef = GAME_DEFINITIONS.get(game_id, {})
         self._process = None
+        self._fetching_count = False
 
         # Thread-safe queue: daemon threads POST results here, never touch self
         self._pending: _queue.SimpleQueue = _queue.SimpleQueue()
@@ -43,6 +44,11 @@ class LaunchTab(QWidget):
         QTimer.singleShot(0, self._load_cover_async)
         QTimer.singleShot(0, self._fetch_player_count)
 
+        # Recurring player count refresh every 5 seconds
+        self._player_timer = QTimer(self)
+        self._player_timer.timeout.connect(self._fetch_player_count)
+        self._player_timer.start(60000)
+
     # ------------------------------------------------------------------
     # Main-thread queue drain (safe — QTimer stops when widget deleted)
     # ------------------------------------------------------------------
@@ -54,6 +60,8 @@ class LaunchTab(QWidget):
                     self._apply_cover(data)
                 elif tag == "count":
                     self._apply_player_count(data)
+                elif tag == "count_done":
+                    self._fetching_count = False
         except _queue.Empty:
             pass
 
@@ -157,6 +165,10 @@ class LaunchTab(QWidget):
     # Actions
     # ------------------------------------------------------------------
     def _on_launch(self):
+        # Check cooppassword before launch
+        if not self._check_coop_password():
+            return
+
         self._launch_btn.setEnabled(False)
         self._launch_btn.setText("Launching…")
 
@@ -182,6 +194,36 @@ class LaunchTab(QWidget):
             self._launch_btn.setEnabled(True),
             self._launch_btn.setText("▶  Launch Co-op")
         ))
+
+    def _check_coop_password(self) -> bool:
+        """Check if the co-op INI has an empty cooppassword. Prompt if so."""
+        if "cooppassword" not in self._gdef.get("defaults", {}):
+            return True
+
+        config_rel = self._gdef.get("config_relative", "")
+        install_path = self._game_info.get("install_path", "")
+        if not config_rel or not install_path:
+            return True
+
+        import os
+        ini_path = os.path.join(install_path, config_rel)
+        if not os.path.isfile(ini_path):
+            return True
+
+        from app.core.ini_parser import read_ini_value, save_ini_settings
+        password = read_ini_value(ini_path, "cooppassword")
+        if password:
+            return True
+
+        from PySide6.QtWidgets import QDialog
+        from app.ui.dialogs.coop_password_dialog import CoopPasswordDialog
+        dlg = CoopPasswordDialog(self._game_info.get("name", self._game_id), parent=self)
+        if dlg.exec() != QDialog.Accepted:
+            return False
+
+        save_ini_settings(ini_path, {"cooppassword": dlg.password})
+        self.log_message.emit(f"Co-op password saved", "info")
+        return True
 
     def _on_shortcut(self):
         launcher = self._game_info.get("launcher_path", "")
@@ -216,15 +258,21 @@ class LaunchTab(QWidget):
         if not app_id:
             self._players_lbl.setText("")
             return
+        if self._fetching_count:
+            return
+        self._fetching_count = True
         pending = self._pending  # capture queue object, NOT self
 
         def _work():
-            count = get_player_count(app_id)
-            text = (
-                f"👥 {count:,} players online now" if count is not None
-                else "👥 Player count unavailable"
-            )
-            pending.put(("count", text))
+            try:
+                count = get_player_count(app_id)
+                text = (
+                    f"👥 {count:,} players online now" if count is not None
+                    else "👥 Player count unavailable"
+                )
+                pending.put(("count", text))
+            finally:
+                pending.put(("count_done", None))
 
         threading.Thread(target=_work, daemon=True).start()
 

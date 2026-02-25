@@ -1,102 +1,125 @@
 """
-Nexus Mods SSO authentication.
-Opens browser for SSO flow, captures API key via local callback server.
+Nexus Mods SSO authentication via WebSocket.
+Connects to wss://sso.nexusmods.com, opens browser for user authorization,
+and receives the API key automatically when approved.
 """
 
 import json
-import socket
 import threading
 import uuid
 import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
 
-NEXUS_SSO_URL = "https://app.nexusmods.com/oauth/authorize"
-NEXUS_TOKEN_URL = "https://users.nexusmods.com/oauth/token"
-NEXUS_SSO_CONNECT = "wss://sso.nexusmods.com"
+import websocket
 
-# Nexus SSO uses a WebSocket-based flow. We'll use the API key approach:
-# The user can also manually paste their API key.
-# For the SSO-style flow without WebSocket deps, we use the NXM handler approach:
-# Open nexusmods.com/users/myaccount and guide user to copy their personal API key.
+NEXUS_SSO_URL = "wss://sso.nexusmods.com"
+NEXUS_SSO_AUTHORIZE = "https://www.nexusmods.com/sso"
+APPLICATION_SLUG = "fromsoft-coop-manager"
 
 
-class _CallbackHandler(BaseHTTPRequestHandler):
-    """Simple HTTP handler to capture OAuth callback."""
-    api_key = None
+class NexusSSOClient:
+    """WebSocket-based Nexus Mods SSO client.
 
-    def do_GET(self):
-        parsed = urlparse(self.path)
-        params = parse_qs(parsed.query)
-        key = params.get("api_key", [None])[0]
-        if key:
-            _CallbackHandler.api_key = key
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html")
-            self.end_headers()
-            self.wfile.write(b"""
-                <html><body style='font-family:sans-serif;background:#1a1a2e;color:#e0e0ec;
-                display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>
-                <div style='text-align:center'>
-                <h2 style='color:#e94560'>API Key Received!</h2>
-                <p>You can close this tab and return to the app.</p>
-                </div></body></html>
-            """)
-        else:
-            self.send_response(400)
-            self.end_headers()
-            self.wfile.write(b"No API key received.")
-
-    def log_message(self, format, *args):
-        pass  # suppress server logs
-
-
-def _find_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('', 0))
-        return s.getsockname()[1]
-
-
-class NexusSSOAuth:
-    """
-    Nexus Mods authentication helper.
-    Opens the Nexus API key page in a browser — user copies their personal key
-    and pastes it into the app, OR we intercept a redirect if using callback.
+    Usage:
+        client = NexusSSOClient()
+        client.start()          # connects WS + opens browser
+        # poll periodically:
+        key, err = client.poll()
+        if key:  ...            # got the API key
+        if err:  ...            # something went wrong
+        client.stop()           # clean up
     """
 
     def __init__(self):
-        self._server = None
-        self._port = None
-        self._api_key = None
+        self._api_key: str | None = None
+        self._error: str | None = None
+        self._connection_token: str | None = None
+        self._uuid: str = str(uuid.uuid4())
         self._done = threading.Event()
+        self._ws: websocket.WebSocketApp | None = None
+        self._thread: threading.Thread | None = None
 
-    def start_callback_server(self) -> int:
-        """Start local HTTP server to receive callback. Returns port."""
-        self._port = _find_free_port()
-        _CallbackHandler.api_key = None
+    # ── public API ────────────────────────────────────────
 
-        self._server = HTTPServer(("127.0.0.1", self._port), _CallbackHandler)
+    def start(self):
+        """Connect to the SSO WebSocket and open the browser for authorization."""
+        self._api_key = None
+        self._error = None
+        self._done.clear()
 
-        def _serve():
-            while not self._done.is_set():
-                self._server.handle_request()
+        self._ws = websocket.WebSocketApp(
+            NEXUS_SSO_URL,
+            on_open=self._on_open,
+            on_message=self._on_message,
+            on_error=self._on_error,
+            on_close=self._on_close,
+        )
+        self._thread = threading.Thread(target=self._run_ws, daemon=True)
+        self._thread.start()
 
-        t = threading.Thread(target=_serve, daemon=True)
-        t.start()
-        return self._port
-
-    def open_nexus_api_page(self):
-        """Open the Nexus personal API key page in the default browser."""
-        webbrowser.open("https://www.nexusmods.com/users/myaccount?tab=api+access")
-
-    def poll_for_key(self) -> str | None:
-        """Check if callback server received an API key."""
-        return _CallbackHandler.api_key
+    def poll(self) -> tuple[str | None, str | None]:
+        """Non-blocking check for results. Returns (api_key, error)."""
+        return self._api_key, self._error
 
     def stop(self):
+        """Close the WebSocket connection and clean up."""
         self._done.set()
-        if self._server:
+        if self._ws:
             try:
-                self._server.server_close()
+                self._ws.close()
             except Exception:
                 pass
+
+    # ── internal ──────────────────────────────────────────
+
+    def _run_ws(self):
+        try:
+            self._ws.run_forever()
+        except Exception as e:
+            self._error = str(e)
+            self._done.set()
+
+    def _on_open(self, ws):
+        """Send SSO request and open browser."""
+        data = {
+            "id": self._uuid,
+            "token": self._connection_token,
+            "protocol": 2,
+        }
+        ws.send(json.dumps(data))
+
+    def _on_message(self, ws, message):
+        """Handle SSO responses: connection_token or api_key."""
+        try:
+            response = json.loads(message)
+        except (json.JSONDecodeError, TypeError):
+            return
+
+        if not response.get("success"):
+            self._error = response.get("error", "SSO authorization failed")
+            self._done.set()
+            return
+
+        data = response.get("data", {})
+
+        if "connection_token" in data:
+            # First response — store token for reconnection, then open browser
+            self._connection_token = data["connection_token"]
+            url = f"{NEXUS_SSO_AUTHORIZE}?id={self._uuid}&application={APPLICATION_SLUG}"
+            webbrowser.open(url)
+
+        elif "api_key" in data:
+            # User authorized — we have the key
+            self._api_key = data["api_key"]
+            self._done.set()
+            ws.close()
+
+    def _on_error(self, ws, error):
+        self._error = str(error) if error else "WebSocket connection error"
+        self._done.set()
+
+    def _on_close(self, ws, close_status_code, close_msg):
+        # If we don't have a key yet and weren't intentionally stopped,
+        # this is an unexpected disconnect
+        if not self._api_key and not self._done.is_set():
+            self._error = "Connection closed before authorization completed"
+            self._done.set()

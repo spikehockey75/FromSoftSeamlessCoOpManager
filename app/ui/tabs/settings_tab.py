@@ -159,15 +159,6 @@ class ME3ProfileTab(QWidget):
         # ── Collapsible Raw TOML ─────────────────────────
         self._layout.addWidget(self._build_raw_toml(raw_toml))
 
-        # ── Refresh button ───────────────────────────────
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        refresh_btn = QPushButton("↻  Refresh")
-        refresh_btn.setObjectName("btn_blue")
-        refresh_btn.clicked.connect(self._on_refresh)
-        btn_row.addWidget(refresh_btn)
-        self._layout.addLayout(btn_row)
-
         self._layout.addStretch()
 
     def _add_placeholder(self, text: str):

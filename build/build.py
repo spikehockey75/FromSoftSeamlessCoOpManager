@@ -43,6 +43,8 @@ cmd = [
     "--hidden-import", "app.services.nexus_service",
     "--hidden-import", "app.services.nexus_sso",
     "--hidden-import", "app.services.steam_service",
+    "--hidden-import", "py7zr",
+    "--hidden-import", "rarfile",
 ]
 
 if os.path.isfile(ICON):
@@ -50,16 +52,24 @@ if os.path.isfile(ICON):
 
 cmd.append(ENTRY_POINT)
 
-print(f"Building {APP_NAME}…")
+print(f"Building {APP_NAME}...")
 print(f"Entry: {ENTRY_POINT}")
 result = subprocess.run(cmd, cwd=BASE_DIR)
 
 if result.returncode == 0:
+    # Remove config.json from dist so user credentials are never shipped
+    for root, _dirs, files in os.walk(os.path.join(DIST_DIR, APP_NAME)):
+        for fname in files:
+            if fname == "config.json":
+                path = os.path.join(root, fname)
+                os.remove(path)
+                print(f"[CLEAN] Removed {path} (user config must not be shipped)")
+
     exe_path = os.path.join(DIST_DIR, APP_NAME, f"{APP_NAME}.exe")
     if os.path.isfile(exe_path):
-        print(f"\n✓ Build successful: {exe_path}")
+        print(f"\n[OK] Build successful: {exe_path}")
     else:
-        print(f"\n✓ Build complete. Output in: {DIST_DIR}")
+        print(f"\n[OK] Build complete. Output in: {DIST_DIR}")
 else:
-    print(f"\n✗ Build failed (exit code {result.returncode})")
+    print(f"\n[FAIL] Build failed (exit code {result.returncode})")
     sys.exit(1)

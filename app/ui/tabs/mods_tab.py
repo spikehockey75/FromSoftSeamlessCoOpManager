@@ -325,6 +325,7 @@ class _ModCard(QFrame):
 class ModsTab(QWidget):
     log_message = Signal(str, str)
     mod_installed = Signal()
+    auth_changed = Signal()
 
     def __init__(self, game_id: str, game_info: dict, config: ConfigManager, parent=None):
         super().__init__(parent)
@@ -344,6 +345,7 @@ class ModsTab(QWidget):
         self._trending_separator: QLabel | None = None
         self._trending_loaded = False
 
+        self._auto_detect_coop_mod()
         self._build()
 
         # Ensure ME3 profile exists on first load if game has enabled mods
@@ -354,6 +356,52 @@ class ModsTab(QWidget):
 
         QTimer.singleShot(400, self._start_update_checks)
         QTimer.singleShot(600, self._start_trending_fetch)
+
+    # ------------------------------------------------------------------
+    # Auto-detect existing co-op mod on disk
+    # ------------------------------------------------------------------
+    def _auto_detect_coop_mod(self):
+        """If the co-op mod files exist on disk but aren't tracked in config, register them.
+
+        Also repairs stale paths — if the co-op mod is registered but its path
+        no longer exists, update it to the game's on-disk marker directory.
+        """
+        coop_id = f"{self._game_id}-coop"
+        installed = self._config.get_game_mods(self._game_id)
+        coop_mod = next((m for m in installed if m["id"] == coop_id), None)
+
+        marker_rel = self._gdef.get("mod_marker_relative", "")
+        install_path = self._game_info.get("install_path", "")
+        if not marker_rel or not install_path:
+            return
+        marker_path = os.path.join(install_path, marker_rel)
+
+        if coop_mod:
+            # Already registered — check if path is stale
+            if coop_mod.get("path") and os.path.isdir(coop_mod["path"]):
+                return  # Path is valid, nothing to fix
+            # Path is stale — repair it using the game's marker directory
+            if os.path.isdir(marker_path):
+                coop_mod["path"] = marker_path
+                self._config.add_or_update_game_mod(self._game_id, coop_mod)
+                print(f"[MODS] Repaired stale path for {coop_mod.get('name', coop_id)} → {marker_path}", flush=True)
+            return
+
+        # Not registered — check if mod exists on disk
+        if not os.path.isdir(marker_path):
+            return
+
+        mod_dict = {
+            "id": coop_id,
+            "name": self._gdef.get("mod_name", "Co-op Mod"),
+            "version": "",
+            "path": marker_path,
+            "nexus_domain": self._gdef.get("nexus_domain", ""),
+            "nexus_mod_id": self._gdef.get("nexus_mod_id", 0),
+            "enabled": True,
+        }
+        self._config.add_or_update_game_mod(self._game_id, mod_dict)
+        print(f"[MODS] Auto-detected {self._gdef.get('mod_name', coop_id)} on disk for {self._game_id}", flush=True)
 
     # ------------------------------------------------------------------
     # Queue drain
@@ -404,6 +452,15 @@ class ModsTab(QWidget):
                 elif tag == "link_nexus":
                     _, mod_id, domain, nexus_mod_id = item
                     self._on_link_nexus(mod_id, domain, nexus_mod_id)
+                elif tag == "nexus_validated":
+                    _, result = item
+                    self._config.set_nexus_user_info({
+                        "name": result.get("name", ""),
+                        "is_premium": result.get("is_premium", False),
+                        "is_supporter": result.get("is_supporter", False),
+                        "profile_url": result.get("profile_url", ""),
+                    })
+                    self.auth_changed.emit()
                 elif tag == "trending_result":
                     _, trending_mods, excluded_cats = item
                     self._on_trending_result(trending_mods, excluded_cats)
@@ -418,20 +475,34 @@ class ModsTab(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.NoFrame)
 
         self._content = QWidget()
         self._layout = QVBoxLayout(self._content)
         self._layout.setContentsMargins(18, 14, 18, 18)
         self._layout.setSpacing(8)
 
-        scroll.setWidget(self._content)
-        outer.addWidget(scroll)
+        self._scroll.setWidget(self._content)
+        outer.addWidget(self._scroll)
 
         self._build_header()
+
+        # "Add Mod" button — created before cards so they insert above it
+        self._add_btn_widget = QWidget()
+        btn_row = QHBoxLayout(self._add_btn_widget)
+        btn_row.setContentsMargins(0, 0, 0, 0)
+        btn_row.addStretch()
+        add_btn = QPushButton("+ Add Mod")
+        add_btn.setObjectName("btn_accent")
+        add_btn.setFixedHeight(30)
+        add_btn.clicked.connect(self._on_add_mod)
+        btn_row.addWidget(add_btn)
+        self._layout.addWidget(self._add_btn_widget)
+
         self._populate_mod_list()
+
         self._layout.addStretch()
 
     def _build_header(self):
@@ -440,16 +511,6 @@ class ModsTab(QWidget):
         self._header_lbl.setObjectName("section_header")
         self._header_lbl.setContentsMargins(0, 0, 0, 4)
         self._layout.addWidget(self._header_lbl)
-
-        # Add Mod button row
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        add_btn = QPushButton("+ Add Mod")
-        add_btn.setObjectName("btn_accent")
-        add_btn.setFixedHeight(30)
-        add_btn.clicked.connect(self._on_add_mod)
-        btn_row.addWidget(add_btn)
-        self._layout.addLayout(btn_row)
 
     def _populate_mod_list(self):
         """Build (or rebuild) card list from current config + virtual co-op entry."""
@@ -462,6 +523,19 @@ class ModsTab(QWidget):
             self._add_card(mod)
 
         self._update_header()
+
+    def _installed_insert_index(self) -> int:
+        """Return the layout index where the next installed card should go.
+
+        Cards go after the header but before the 'Add Mod' button.
+        """
+        idx = self._layout.indexOf(self._add_btn_widget)
+        if idx >= 0:
+            return idx
+        # Fallback: before trending separator or stretch
+        if self._trending_separator:
+            return self._layout.indexOf(self._trending_separator)
+        return self._layout.count() - 1
 
     def _get_display_mods(self) -> list[dict]:
         """Return installed mods, prepending a virtual co-op entry if not installed."""
@@ -513,8 +587,8 @@ class ModsTab(QWidget):
                 self._config.add_or_update_game_mod(self._game_id, mod)
 
         card = _ModCard(mod, self._game_id, self._is_me3_game, self._pending)
-        # Insert before the trailing stretch
-        self._layout.insertWidget(self._layout.count() - 1, card)
+        # Insert in the installed section (before trending separator / stretch)
+        self._layout.insertWidget(self._installed_insert_index(), card)
         self._cards[mod["id"]] = card
 
     def _update_header(self):
@@ -744,11 +818,20 @@ class ModsTab(QWidget):
         if mod.get("nexus_mod_id") and api_key:
             # Download from Nexus
             self._run_nexus_install(mod_id, mod)
+        elif mod.get("nexus_mod_id") and not api_key:
+            # Mod has Nexus info but no API key — open SSO dialog
+            from app.ui.nexus_widget import NexusApiKeyDialog
+            dlg = NexusApiKeyDialog(parent=self)
+            if dlg.exec() == QDialog.Accepted and dlg.api_key:
+                self._config.set_nexus_api_key(dlg.api_key)
+                self._validate_and_save_nexus_key(dlg.api_key)
+                self._run_nexus_install(mod_id, mod)
         else:
-            # Fall back to zip browser
+            # No Nexus info — fall back to zip browser
             downloads = os.path.join(os.path.expanduser("~"), "Downloads")
             path, _ = QFileDialog.getOpenFileName(
-                self, f"Select zip for {mod.get('name', mod_id)}", downloads, "Zip files (*.zip)"
+                self, f"Select archive for {mod.get('name', mod_id)}", downloads,
+                "Archives (*.zip *.7z *.rar);;All files (*)"
             )
             if path:
                 self._run_zip_install(mod_id, mod, path)
@@ -842,13 +925,21 @@ class ModsTab(QWidget):
 
         threading.Thread(target=_work, daemon=True).start()
 
+    def _validate_and_save_nexus_key(self, api_key: str):
+        """Validate a newly-obtained API key and save user info in background."""
+        pending = self._pending
+
+        def _work():
+            svc = NexusService(api_key)
+            result = svc.validate_user()
+            if "error" not in result:
+                pending.put(("nexus_validated", result))
+
+        threading.Thread(target=_work, daemon=True).start()
+
     def _on_install_done(self, mod_id: str, result: dict, mod_dict: dict):
-        card = self._cards.get(mod_id) or self._trending_cards.get(mod_id)
         version = mod_dict.get("version", "")
-        if card:
-            card.on_install_done(result, version)
         if result.get("success"):
-            # For trending mods: give a proper installed ID and move to installed section
             is_trending = mod_id in self._trending_cards
             if is_trending:
                 installed_id = slugify(mod_dict.get("name", str(mod_dict.get("nexus_mod_id", mod_id))))
@@ -861,25 +952,30 @@ class ModsTab(QWidget):
                 write_fsmm_version(self._get_mod_version_dir(installed_id), version)
             self._rewrite_profile()
 
+            # Rebuild installed cards to reflect new state
+            self._populate_mod_list()
+            self._scroll.verticalScrollBar().setValue(0)
+
             if is_trending:
                 # Remove from trending section
-                tc = self._trending_cards.pop(mod_id)
-                self._layout.removeWidget(tc)
-                tc.deleteLater()
-                # Add as installed card
-                self._add_card(mod_dict)
-                # Clean up separator if no trending cards remain
+                tc = self._trending_cards.pop(mod_id, None)
+                if tc:
+                    self._layout.removeWidget(tc)
+                    tc.deleteLater()
                 if not self._trending_cards and self._trending_separator:
                     self._layout.removeWidget(self._trending_separator)
                     self._trending_separator.deleteLater()
                     self._trending_separator = None
 
-            self._update_header()
             self.log_message.emit(f"Installed {mod_dict.get('name', mod_id)}", "success")
             self.mod_installed.emit()
             if mod_dict.get("nexus_mod_id") and self._config.get_nexus_api_key():
                 self._spawn_update_check(mod_dict)
         else:
+            # Update the card to show the error
+            card = self._cards.get(mod_id) or self._trending_cards.get(mod_id)
+            if card:
+                card.on_install_done(result, version)
             self.log_message.emit(result.get("message", "Install failed"), "error")
 
     # ------------------------------------------------------------------
@@ -900,13 +996,30 @@ class ModsTab(QWidget):
         game_info = self._game_info
         config = self._config
         pending = self._pending
-        mod_target = mod.get("path", "")
+        is_me3 = game_id in ME3_GAME_MAP
+
+        old_path = mod.get("path", "")
+        me3_mod_dir = os.path.join(config.get_game_mod_dir(game_id), mod_id)
+
+        # Detect if mod is currently in the game directory and needs migrating
+        # to the app-managed ME3 mod directory.  Use normcase for
+        # case-insensitive comparison on Windows.
+        needs_migration = False
+        if is_me3 and old_path:
+            install_path = game_info.get("install_path", "")
+            if install_path and os.path.normcase(os.path.normpath(old_path)).startswith(
+                    os.path.normcase(os.path.normpath(install_path))):
+                needs_migration = True
+
+        mod_target = me3_mod_dir if is_me3 else old_path
 
         fake_gdef = dict(gdef)
         fake_gdef["nexus_domain"] = mod.get("nexus_domain", "")
         fake_gdef["nexus_mod_id"] = mod.get("nexus_mod_id", 0)
 
         def _work():
+            from app.core.mod_installer import _merge_ini_settings
+
             svc = NexusService(api_key)
             temp_dir = os.path.join(config.get_mods_dir(), "_tmp")
 
@@ -918,15 +1031,48 @@ class ModsTab(QWidget):
                 pending.put(("update_done", mod_id,
                              {"success": False, "message": dl.get("error", "Download failed")}, ""))
                 return
+
+            # If migrating, read old INI settings before extraction overwrites them
+            old_ini_data: dict[str, bytes] = {}
+            if needs_migration and os.path.isdir(old_path):
+                for root, _dirs, files in os.walk(old_path):
+                    for fname in files:
+                        if fname.endswith(".ini"):
+                            try:
+                                with open(os.path.join(root, fname), "rb") as fh:
+                                    old_ini_data[fname] = fh.read()
+                            except Exception:
+                                pass
+
             zip_path = dl["zip_path"]
             # Prefer Nexus API version > file metadata > zip-extracted
             version_hint = dl.get("api_version") or dl.get("version", "")
+
+            if is_me3:
+                os.makedirs(me3_mod_dir, exist_ok=True)
+
             result = install_mod_from_zip(
                 zip_path,
                 game_info.get("install_path", ""),
                 gdef,
-                target_dir=mod_target if game_id in ME3_GAME_MAP else None,
+                target_dir=mod_target if is_me3 else None,
             )
+
+            if needs_migration and result.get("success"):
+                # Merge old settings into the newly extracted INIs
+                if old_ini_data:
+                    for root, _dirs, files in os.walk(me3_mod_dir):
+                        for fname in files:
+                            if fname.endswith(".ini") and fname in old_ini_data:
+                                _merge_ini_settings(
+                                    os.path.join(root, fname),
+                                    old_ini_data[fname],
+                                )
+
+                # Tag result so _on_update_done updates the path
+                # (old files in game dir are left untouched)
+                result["_new_path"] = me3_mod_dir
+
             pending.put(("update_done", mod_id, result, version_hint))
 
         threading.Thread(target=_work, daemon=True).start()
@@ -943,8 +1089,10 @@ class ModsTab(QWidget):
                 if m["id"] == mod_id:
                     if effective_version:
                         m["version"] = effective_version
-                    # Correct path for non-ME3 games in case it was stale
-                    if not self._is_me3_game:
+                    # Update path: migration sets _new_path, otherwise fix stale paths
+                    if result.get("_new_path"):
+                        m["path"] = result["_new_path"]
+                    elif not self._is_me3_game:
                         correct_path = os.path.join(
                             self._game_info.get("install_path", ""),
                             self._gdef.get("mod_marker_relative", ""),
@@ -1027,31 +1175,51 @@ class ModsTab(QWidget):
         self.log_message.emit(f"Removed {mod_name}", "info")
 
     # ------------------------------------------------------------------
-    # Add mod from zip
+    # Add mod
     # ------------------------------------------------------------------
     def _on_add_mod(self):
         from app.ui.dialogs.add_mod_dialog import AddModDialog
-        dlg = AddModDialog(self)
+        dlg = AddModDialog(
+            self._game_id, self._game_info, self._config, self._gdef,
+            parent=self,
+        )
         if dlg.exec() != QDialog.Accepted or not dlg.result:
             return
-        info = dlg.result
-        mod_id = info["slug"]
+
+        # Dialog handled the full download+install — save to config and refresh
+        mod_dict = dlg.result
+        mod_id = mod_dict["id"]
+
         # Avoid slug collision
         if mod_id in self._cards:
             import time
             mod_id = f"{mod_id}-{int(time.time()) % 10000}"
+            mod_dict["id"] = mod_id
 
-        mod = {
-            "id": mod_id,
-            "name": info["name"],
-            "version": None,
-            "path": "",
-            "nexus_domain": info["nexus_domain"],
-            "nexus_mod_id": info["nexus_mod_id"],
-            "enabled": True,
-            "_virtual": True,
-        }
-        self._run_zip_install(mod_id, mod, info["zip_path"])
+        self._config.add_or_update_game_mod(self._game_id, mod_dict)
+        if mod_dict.get("version"):
+            write_fsmm_version(self._get_mod_version_dir(mod_id), mod_dict["version"])
+        self._rewrite_profile()
+        self._populate_mod_list()
+        self._update_header()
+        self._scroll.verticalScrollBar().setValue(0)
+        self.log_message.emit(f"Installed {mod_dict.get('name', mod_id)}", "success")
+        self.mod_installed.emit()
+
+        # Warn if the mod has no content ME3 can load
+        if self._is_me3_game and mod_dict.get("path") and os.path.isdir(mod_dict["path"]):
+            dlls = _find_native_dlls(mod_dict["path"])
+            assets = _has_asset_content(mod_dict["path"])
+            if not dlls and not assets:
+                self.log_message.emit(
+                    f"Note: {mod_dict.get('name', mod_id)} has no DLLs or game assets — "
+                    f"it won't appear in the ME3 profile. It may be a standalone tool.",
+                    "warning"
+                )
+
+        # Check for updates on the newly installed mod
+        if mod_dict.get("nexus_mod_id") and self._config.get_nexus_api_key():
+            self._spawn_update_check(mod_dict)
 
     # ------------------------------------------------------------------
     # Link to Nexus

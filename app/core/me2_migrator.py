@@ -10,7 +10,7 @@ import os
 import tomllib
 
 from app.core.me3_service import (
-    ME3_GAME_MAP, slugify, write_me3_profile,
+    ME3_GAME_MAP, ME3_PROFILE_PREFIX, slugify, write_me3_profile,
 )
 
 # Map ME2 config filename suffixes → our internal game_id
@@ -20,6 +20,9 @@ ME2_GAME_MAP = {
     "darksoulsremastered": "dsr",
     "eldenring": "er",
 }
+
+# Reverse of ME3_GAME_MAP — map ME3 game names → our internal game_id
+_ME3_REVERSE_GAME_MAP = {v: k for k, v in ME3_GAME_MAP.items()}
 
 # Co-op launcher DLL stems — these are managed by the app already
 _COOP_DLL_STEMS = {"ds3sc", "ersc", "nrsc", "ds1sc", "ac6_for_coop"}
@@ -152,6 +155,141 @@ def scan_me2_installation(me2_dir: str) -> list[dict]:
         if parsed:
             results.append(parsed)
     return results
+
+
+# ---------------------------------------------------------------------------
+# ME3 profile scanning (import from Mod Engine Manager / other tools)
+# ---------------------------------------------------------------------------
+
+def scan_me3_profiles(me3_exe_path: str) -> list[dict]:
+    """Scan existing non-FSMM ME3 profiles for mods to import.
+
+    Checks two locations:
+    1. bin/profiles/*.toml — profiles created by Mod Engine Manager or other tools
+       (skips fsmm_* profiles which are ours)
+    2. ME3 root *.me3 — default profiles that ship with ME3
+
+    Returns list[dict] in the same format as scan_me2_installation().
+    """
+    if not me3_exe_path or not os.path.isfile(me3_exe_path):
+        return []
+
+    me3_bin_dir = os.path.dirname(me3_exe_path)
+    me3_root = os.path.dirname(me3_bin_dir)
+    profiles_dir = os.path.join(me3_bin_dir, "profiles")
+
+    results = []
+
+    # 1. Scan bin/profiles/*.toml (skip our own fsmm_* profiles)
+    if os.path.isdir(profiles_dir):
+        for filename in sorted(os.listdir(profiles_dir)):
+            if not filename.endswith(".toml"):
+                continue
+            if filename.startswith(ME3_PROFILE_PREFIX):
+                continue
+            parsed = _parse_me3_profile(
+                os.path.join(profiles_dir, filename), me3_root
+            )
+            if parsed:
+                results.append(parsed)
+
+    # 2. Scan ME3 root *.me3 files (default / Mod Engine Manager profiles)
+    if os.path.isdir(me3_root):
+        for filename in sorted(os.listdir(me3_root)):
+            if not filename.endswith(".me3"):
+                continue
+            parsed = _parse_me3_profile(
+                os.path.join(me3_root, filename), me3_root
+            )
+            if parsed:
+                results.append(parsed)
+
+    return results
+
+
+def _parse_me3_profile(profile_path: str, me3_root: str) -> dict | None:
+    """Parse a single ME3 profile (.toml or .me3) for importable mods.
+
+    Handles both TOML key formats:
+    - [[packages]] (plural) — used by FSMM and some tools
+    - [[package]] (singular) — used by ME3 defaults
+
+    Returns dict with game_id, packages, natives — or None if empty/unsupported.
+    """
+    try:
+        with open(profile_path, "rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return None
+
+    # Determine game_id from [[supports]] section
+    supports = data.get("supports", [])
+    if not supports:
+        return None
+    game_name = supports[0].get("game", "") if supports else ""
+    game_id = _ME3_REVERSE_GAME_MAP.get(game_name)
+    if not game_id:
+        return None
+
+    packages: list[dict] = []
+    natives: list[str] = []
+
+    # Extract asset packages — handle both [[packages]] and [[package]]
+    for key in ("packages", "package"):
+        raw = data.get(key, [])
+        if not isinstance(raw, list):
+            continue
+        for pkg in raw:
+            if not isinstance(pkg, dict):
+                continue
+            path = pkg.get("path", "")
+            if not path:
+                continue
+            abs_path = _resolve_path(path, me3_root)
+            if not os.path.isdir(abs_path):
+                continue
+            # Skip empty directories (e.g. stock "eldenring-mods/")
+            if not _dir_has_content(abs_path):
+                continue
+            name = pkg.get("id") or pkg.get("name") or os.path.basename(abs_path)
+            packages.append({"name": name, "path": abs_path})
+
+    # Extract native DLLs (skip co-op DLLs managed by the app)
+    raw_natives = data.get("natives", [])
+    if isinstance(raw_natives, list):
+        for native in raw_natives:
+            if not isinstance(native, dict):
+                continue
+            if not native.get("enabled", True):
+                continue
+            path = native.get("path", "")
+            if not path:
+                continue
+            abs_path = _resolve_path(path, me3_root)
+            if not os.path.isfile(abs_path):
+                continue
+            stem = os.path.splitext(os.path.basename(abs_path))[0].lower()
+            if stem in _COOP_DLL_STEMS:
+                continue
+            natives.append(abs_path)
+
+    if not packages and not natives:
+        return None
+
+    return {
+        "game_id": game_id,
+        "game_suffix": game_name,
+        "packages": packages,
+        "natives": natives,
+    }
+
+
+def _dir_has_content(path: str) -> bool:
+    """Check if a directory has any files or subdirectories."""
+    try:
+        return any(True for _ in os.scandir(path))
+    except OSError:
+        return False
 
 
 # ---------------------------------------------------------------------------

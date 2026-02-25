@@ -134,11 +134,21 @@ class ConfigManager:
         if game.get("mod_installed"):
             from app.config.game_definitions import GAME_DEFINITIONS
             gdef = GAME_DEFINITIONS.get(game_id, {})
+            # Prefer the app's managed mod dir; fall back to the game's on-disk
+            # marker directory so a fresh install finds the actual DLLs.
+            mod_dir = os.path.join(self.get_game_mod_dir(game_id), f"{game_id}-coop")
+            if not os.path.isdir(mod_dir):
+                marker_rel = gdef.get("mod_marker_relative", "")
+                install_path = game.get("install_path", "")
+                if marker_rel and install_path:
+                    candidate = os.path.join(install_path, marker_rel)
+                    if os.path.isdir(candidate):
+                        mod_dir = candidate
             migrated = {
                 "id": f"{game_id}-coop",
                 "name": gdef.get("mod_name", "Co-op Mod"),
                 "version": game.get("installed_mod_version"),
-                "path": os.path.join(self.get_game_mod_dir(game_id), f"{game_id}-coop"),
+                "path": mod_dir,
                 "nexus_domain": gdef.get("nexus_domain", ""),
                 "nexus_mod_id": gdef.get("nexus_mod_id", 0),
                 "enabled": True,

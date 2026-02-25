@@ -24,9 +24,11 @@ def slugify(name: str) -> str:
     return _re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
 ME3_GAME_MAP = {
     "ac6": "armoredcore6",
+    "dsr": "darksoulsremastered",
     "ds3": "darksouls3",
     "er": "eldenring",
     "ern": "nightreign",
+    "sekiro": "sekiro",
 }
 
 
@@ -297,12 +299,10 @@ def _check_me3_log_for_errors(game_id: str, since_time: float) -> bool:
 def launch_game_with_me3(game_id: str, me3_path: str, terminal_callback=None) -> subprocess.Popen | None:
     """Launch a game using ME3 CLI.
 
-    Waits briefly for ME3 to finish attaching, then checks stdout and
-    ME3 log files for errors.
+    Waits briefly for ME3 to finish, then checks the process exit code.
     Returns the Popen on success, None if ME3 failed (caller can fall back).
     """
     import threading
-    import time
 
     me3_game_name = ME3_GAME_MAP.get(game_id)
     if not me3_game_name:
@@ -320,8 +320,6 @@ def launch_game_with_me3(game_id: str, me3_path: str, terminal_callback=None) ->
     if terminal_callback:
         terminal_callback(f"$ {' '.join(cmd)}")
 
-    launch_time = time.time()
-
     try:
         proc = subprocess.Popen(
             cmd,
@@ -330,20 +328,19 @@ def launch_game_with_me3(game_id: str, me3_path: str, terminal_callback=None) ->
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
 
-        # Read ME3 output to detect attach errors.
-        # Use binary mode + manual decode to handle encoding issues on Windows.
+        # Collect ME3 output and check for errors.
         output_lines: list[str] = []
-        has_error = False
+        error_lines: list[str] = []
 
         def _collect():
-            nonlocal has_error
             try:
                 for raw_line in proc.stdout:
                     line = raw_line.decode("utf-8", errors="replace")
-                    clean = _strip_ansi(line)
-                    output_lines.append(clean)
-                    if "ERROR" in clean or "panicked" in clean:
-                        has_error = True
+                    clean = _strip_ansi(line).rstrip()
+                    if clean:
+                        output_lines.append(clean)
+                        if "ERROR" in clean or "panicked" in clean:
+                            error_lines.append(clean)
                 proc.stdout.close()
             except Exception:
                 pass
@@ -351,16 +348,25 @@ def launch_game_with_me3(game_id: str, me3_path: str, terminal_callback=None) ->
         reader = threading.Thread(target=_collect, daemon=True)
         reader.start()
 
-        # Give ME3 a moment to start and report errors
-        reader.join(timeout=8)
+        # Wait for ME3 to finish launching (it exits after attaching to the game)
+        reader.join(timeout=15)
 
-        # Also check ME3 log files — stdout may be buffered but logs are flushed
-        if not has_error:
-            has_error = _check_me3_log_for_errors(game_id, launch_time)
+        # Forward ME3 output to terminal for visibility
+        if terminal_callback:
+            for line in output_lines:
+                terminal_callback(f"[ME3] {line}")
 
-        if has_error or (proc.poll() is not None and proc.returncode != 0):
+        # Fail if ME3 reported errors or exited with a non-zero code
+        exit_code = proc.poll()
+        failed = bool(error_lines) or (exit_code is not None and exit_code != 0)
+
+        if failed:
             if terminal_callback:
-                terminal_callback("[ME3] Attach failed — close the game and try again")
+                # Surface the actual error from ME3
+                for err in error_lines:
+                    terminal_callback(f"[ME3 Error] {err}")
+                if not error_lines:
+                    terminal_callback(f"[ME3] Process exited with code {exit_code}")
             return None
 
         return proc

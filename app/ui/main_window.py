@@ -104,6 +104,7 @@ class MainWindow(QMainWindow):
         self._sidebar.scan_requested.connect(self._on_scan)
         self._sidebar.settings_requested.connect(self._on_settings)
         self._sidebar.launch_game.connect(self._on_launch_game)
+        self._sidebar.nexus_widget.auth_changed.connect(self._on_nexus_auth_changed)
         self._splitter.addWidget(self._sidebar)
 
         # Content area
@@ -170,13 +171,17 @@ class MainWindow(QMainWindow):
         if games:
             self._games = games
             self._sidebar.populate_games(games)
+            self._ensure_me3_profiles()
             if games:
                 first_id = next(iter(games))
-                self._on_game_selected(first_id)
+                self._sidebar.select_game(first_id)
 
         last_scan = self._config.get_last_scan()
         if last_scan:
             self._scan_status_lbl.setText(f"Scanned: {last_scan[:10]}")
+        else:
+            # First launch — auto-scan for games
+            QTimer.singleShot(300, self._on_scan)
 
     def _on_game_selected(self, game_id: str):
         game_info = self._games.get(game_id)
@@ -188,6 +193,7 @@ class MainWindow(QMainWindow):
             page = GamePage(game_id, game_info, self._config)
             page.log_message.connect(self._on_log)
             page.mod_installed.connect(self._on_mod_installed)
+            page.auth_changed.connect(self._on_nexus_auth_from_install)
             self._game_pages[game_id] = page
             self._content_stack.addWidget(page)
 
@@ -200,6 +206,74 @@ class MainWindow(QMainWindow):
         self._config.reload()
         self._games = self._config.get_games()
         self._sidebar.populate_games(self._games)
+
+    def _ensure_me3_profiles(self):
+        """Auto-detect co-op mods on disk and write ME3 profiles for all games.
+
+        Handles three scenarios:
+        1. Co-op mod not in config but exists on disk → register it
+        2. Co-op mod in config but path is stale/invalid → repair to marker path
+        3. Co-op mod in config with valid path → just write the ME3 profile
+        """
+        from app.core.me3_service import (find_me3_executable, write_me3_profile,
+                                          ME3_GAME_MAP)
+        from app.config.game_definitions import GAME_DEFINITIONS
+        from app.ui.tabs.mods_tab import _find_native_dlls, _has_asset_content
+
+        me3_path = find_me3_executable(self._config.get_me3_path())
+        if not me3_path:
+            return
+
+        for game_id, game_info in self._games.items():
+            if game_id not in ME3_GAME_MAP:
+                continue
+            gdef = GAME_DEFINITIONS.get(game_id, {})
+            marker_rel = gdef.get("mod_marker_relative", "")
+            install_path = game_info.get("install_path", "")
+            marker_path = os.path.join(install_path, marker_rel) if marker_rel and install_path else ""
+
+            coop_id = f"{game_id}-coop"
+            mods = self._config.get_game_mods(game_id)
+            coop_mod = next((m for m in mods if m["id"] == coop_id), None)
+
+            if coop_mod:
+                # Registered — repair stale path if needed
+                if not coop_mod.get("path") or not os.path.isdir(coop_mod["path"]):
+                    if marker_path and os.path.isdir(marker_path):
+                        coop_mod["path"] = marker_path
+                        self._config.add_or_update_game_mod(game_id, coop_mod)
+                        mods = self._config.get_game_mods(game_id)
+            else:
+                # Not registered — auto-detect from disk
+                if marker_path and os.path.isdir(marker_path):
+                    mod_dict = {
+                        "id": coop_id,
+                        "name": gdef.get("mod_name", "Co-op Mod"),
+                        "version": "",
+                        "path": marker_path,
+                        "nexus_domain": gdef.get("nexus_domain", ""),
+                        "nexus_mod_id": gdef.get("nexus_mod_id", 0),
+                        "enabled": True,
+                    }
+                    self._config.add_or_update_game_mod(game_id, mod_dict)
+                    mods = self._config.get_game_mods(game_id)
+
+            # Write ME3 profile from current mod state
+            pkg_paths = []
+            native_paths = []
+            for m in mods:
+                if not m.get("enabled") or not m.get("path"):
+                    continue
+                p = m["path"]
+                if p.lower().endswith(".dll"):
+                    native_paths.append(p)
+                elif os.path.isdir(p):
+                    dlls = _find_native_dlls(p)
+                    if dlls:
+                        native_paths.extend(dlls)
+                    if _has_asset_content(p):
+                        pkg_paths.append(p)
+            write_me3_profile(game_id, pkg_paths, me3_path, native_dlls=native_paths)
 
     # ------------------------------------------------------------------
     # Scan
@@ -258,6 +332,7 @@ class MainWindow(QMainWindow):
             restore_id = self._current_game_id if self._current_game_id in games else next(iter(games))
             print(f"[SCAN] selecting game: {restore_id}", flush=True)
             self._on_game_selected(restore_id)
+        self._ensure_me3_profiles()
         print("[SCAN] _on_scan_done complete", flush=True)
         self._check_all_mod_updates()
 
@@ -269,8 +344,22 @@ class MainWindow(QMainWindow):
         dlg.settings_saved.connect(self._on_settings_saved)
         dlg.exec()
 
+    def _on_nexus_auth_changed(self, api_key: str):
+        """Refresh game pages when Nexus auth changes (login/logout via sidebar)."""
+        for page in self._game_pages.values():
+            game_info = self._games.get(page._game_id, {})
+            page.refresh(game_info)
+        if api_key:
+            self._check_all_mod_updates()
+
+    def _on_nexus_auth_from_install(self):
+        """User authenticated via SSO during a mod install — refresh sidebar."""
+        self._sidebar.nexus_widget._refresh()
+
     def _on_settings_saved(self):
         self._terminal.log("Settings saved", "success")
+        # Refresh Nexus widget (picks up sign-out / key changes)
+        self._sidebar.nexus_widget._refresh()
         # Refresh game pages to pick up ME3 changes
         for page in self._game_pages.values():
             game_info = self._games.get(page._game_id, {})
@@ -285,6 +374,11 @@ class MainWindow(QMainWindow):
                                           launch_game_direct, ME3_GAME_MAP)
         game_info = self._games.get(game_id, {})
         name = game_info.get("name", game_id)
+
+        # Check cooppassword before launch
+        if not self._check_coop_password(game_id, game_info):
+            return
+
         use_me3 = self._config.get_use_me3()
         me3_path = find_me3_executable(self._config.get_me3_path())
         launcher_path = game_info.get("launcher_path", "")
@@ -293,13 +387,16 @@ class MainWindow(QMainWindow):
 
         self._terminal.log(f"Launching {name}…", "info")
 
+        def _terminal_cb(msg):
+            pending.put(("log", msg, "info"))
+
         def _launch():
             proc = None
             method = ""
             # Use ME3 for all ME3-supported games when enabled.
             # Fall back to direct co-op launcher if ME3 fails.
             if use_me3 and me3_path and me3_supported:
-                proc = launch_game_with_me3(game_id, me3_path)
+                proc = launch_game_with_me3(game_id, me3_path, terminal_callback=_terminal_cb)
                 if proc:
                     method = "ME3"
                 else:
@@ -308,12 +405,47 @@ class MainWindow(QMainWindow):
                     pending.put(("launch_result", name, False, "ME3 attach failed — close the game and try again"))
                     return
             if not proc and launcher_path:
-                proc = launch_game_direct(launcher_path)
+                proc = launch_game_direct(launcher_path, terminal_callback=_terminal_cb)
                 if not method:
                     method = "direct"
             pending.put(("launch_result", name, proc is not None, method))
 
         threading.Thread(target=_launch, daemon=True).start()
+
+    def _check_coop_password(self, game_id: str, game_info: dict) -> bool:
+        """Check if the co-op INI has an empty cooppassword. Prompt if so.
+
+        Returns True to proceed with launch, False to abort.
+        """
+        from app.config.game_definitions import GAME_DEFINITIONS
+        gdef = GAME_DEFINITIONS.get(game_id, {})
+        if "cooppassword" not in gdef.get("defaults", {}):
+            return True
+
+        config_rel = gdef.get("config_relative", "")
+        install_path = game_info.get("install_path", "")
+        if not config_rel or not install_path:
+            return True
+
+        ini_path = os.path.join(install_path, config_rel)
+        if not os.path.isfile(ini_path):
+            return True
+
+        from app.core.ini_parser import read_ini_value
+        password = read_ini_value(ini_path, "cooppassword")
+        if password:
+            return True
+
+        # Password is empty — prompt the user
+        from app.ui.dialogs.coop_password_dialog import CoopPasswordDialog
+        dlg = CoopPasswordDialog(game_info.get("name", game_id), parent=self)
+        if dlg.exec() != QDialog.Accepted:
+            return False
+
+        from app.core.ini_parser import save_ini_settings
+        save_ini_settings(ini_path, {"cooppassword": dlg.password})
+        self._terminal.log(f"Co-op password saved for {game_info.get('name', game_id)}", "info")
+        return True
 
     # ------------------------------------------------------------------
     # Logging
@@ -329,7 +461,10 @@ class MainWindow(QMainWindow):
             while True:
                 item = self._pending.get_nowait()
                 tag = item[0]
-                if tag == "update_check":
+                if tag == "log":
+                    _, msg, level = item
+                    self._terminal.log(msg, level)
+                elif tag == "update_check":
                     _, game_id, game_name, result = item
                     self._on_update_checked(game_id, game_name, result)
                 elif tag == "launch_result":

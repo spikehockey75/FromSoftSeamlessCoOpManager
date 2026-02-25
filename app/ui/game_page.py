@@ -15,6 +15,7 @@ from app.ui.tabs.mods_tab import ModsTab
 class GamePage(QWidget):
     log_message = Signal(str, str)
     mod_installed = Signal(str)  # game_id
+    auth_changed = Signal()
 
     def __init__(self, game_id: str, game_info: dict, config: ConfigManager, parent=None):
         super().__init__(parent)
@@ -46,6 +47,8 @@ class GamePage(QWidget):
 
         self._tabs.addTab(self._saves_tab, "💾  Saves")
 
+        self._tabs.currentChanged.connect(self._on_tab_changed)
+
         layout.addWidget(self._tabs)
 
         # Wire log signals
@@ -53,6 +56,7 @@ class GamePage(QWidget):
         self._saves_tab.log_message.connect(self.log_message)
 
         self._mods_tab.mod_installed.connect(lambda: self.mod_installed.emit(self._game_id))
+        self._mods_tab.auth_changed.connect(self.auth_changed)
 
     def refresh(self, game_info: dict):
         self._game_info = game_info
@@ -60,6 +64,11 @@ class GamePage(QWidget):
         if self._profile_tab:
             self._profile_tab.refresh(game_info)
         self._saves_tab.refresh(game_info)
+
+    def _on_tab_changed(self, index: int):
+        widget = self._tabs.widget(index)
+        if widget is self._profile_tab and self._profile_tab:
+            self._profile_tab._on_refresh()
 
     def show_mods_tab(self):
         self._tabs.setCurrentWidget(self._mods_tab)

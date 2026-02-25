@@ -3,13 +3,12 @@
 import threading
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel,
                                 QPushButton, QDialog, QLineEdit, QDialogButtonBox,
-                                QVBoxLayout, QProgressBar)
+                                QFrame)
 from PySide6.QtCore import Qt, Signal, QTimer, QThread, QObject
 from PySide6.QtGui import QPixmap, QCursor
 from app.config.config_manager import ConfigManager
 from app.services.nexus_service import NexusService
-from app.services.nexus_sso import NexusSSOAuth
-import urllib.request
+from app.services.nexus_sso import NexusSSOClient
 
 
 class _ValidateWorker(QObject):
@@ -26,7 +25,7 @@ class _ValidateWorker(QObject):
 
 
 class NexusApiKeyDialog(QDialog):
-    """Dialog to paste API key manually or open Nexus page."""
+    """Dialog for Nexus SSO authorization with manual API key fallback."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -34,6 +33,8 @@ class NexusApiKeyDialog(QDialog):
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.setMinimumWidth(440)
         self.api_key = ""
+        self._sso_client = None
+        self._poll_timer = None
         self._build()
 
     def _build(self):
@@ -44,43 +45,155 @@ class NexusApiKeyDialog(QDialog):
         layout.addWidget(QLabel("<b>Connect your Nexus Mods account</b>"))
 
         desc = QLabel(
-            "Paste your personal API key from Nexus Mods.\n"
-            "This enables authenticated downloads and update checks."
+            "Authorize with Nexus Mods to enable mod downloads\n"
+            "and automatic update checking."
         )
         desc.setWordWrap(True)
         desc.setStyleSheet("color:#8888aa;font-size:11px;")
         layout.addWidget(desc)
 
-        open_btn = QPushButton("  Open Nexus API key page")
-        open_btn.setObjectName("btn_blue")
-        open_btn.clicked.connect(self._open_nexus)
-        layout.addWidget(open_btn)
+        # ── SSO authorize button ──────────────────────────
+        self._sso_btn = QPushButton("  Authorize with Nexus Mods")
+        self._sso_btn.setObjectName("btn_accent")
+        self._sso_btn.setFixedHeight(36)
+        self._sso_btn.setCursor(Qt.PointingHandCursor)
+        self._sso_btn.clicked.connect(self._on_sso_start)
+        layout.addWidget(self._sso_btn)
 
-        lbl = QLabel("Paste your API key:")
-        layout.addWidget(lbl)
+        # SSO status label (hidden initially)
+        self._sso_status = QLabel("")
+        self._sso_status.setStyleSheet("color:#8888aa;font-size:11px;")
+        self._sso_status.setWordWrap(True)
+        self._sso_status.setVisible(False)
+        layout.addWidget(self._sso_status)
+
+        # ── Separator ────────────────────────────────────
+        sep_row = QHBoxLayout()
+        line1 = QFrame()
+        line1.setFrameShape(QFrame.HLine)
+        line1.setStyleSheet("color:#2a2a4a;")
+        sep_lbl = QLabel("or")
+        sep_lbl.setStyleSheet("color:#555577;font-size:10px;padding:0 8px;")
+        line2 = QFrame()
+        line2.setFrameShape(QFrame.HLine)
+        line2.setStyleSheet("color:#2a2a4a;")
+        sep_row.addWidget(line1)
+        sep_row.addWidget(sep_lbl)
+        sep_row.addWidget(line2)
+        layout.addLayout(sep_row)
+
+        # ── Manual API key fallback (collapsed) ──────────
+        self._manual_toggle = QPushButton("Paste API key manually")
+        self._manual_toggle.setFlat(True)
+        self._manual_toggle.setCursor(Qt.PointingHandCursor)
+        self._manual_toggle.setStyleSheet(
+            "QPushButton{color:#8888aa;font-size:11px;text-align:left;"
+            "padding:0;border:none;background:transparent;}"
+            "QPushButton:hover{color:#e0e0ec;}"
+        )
+        self._manual_toggle.clicked.connect(self._toggle_manual)
+        layout.addWidget(self._manual_toggle)
+
+        self._manual_widget = QWidget()
+        ml = QVBoxLayout(self._manual_widget)
+        ml.setContentsMargins(0, 0, 0, 0)
+        ml.setSpacing(8)
+
         self._key_edit = QLineEdit()
-        self._key_edit.setPlaceholderText("Your API key from nexusmods.com/users/myaccount")
-        layout.addWidget(self._key_edit)
+        self._key_edit.setPlaceholderText("Paste your API key from nexusmods.com/users/myaccount")
+        ml.addWidget(self._key_edit)
 
-        self._status = QLabel("")
-        self._status.setStyleSheet("color:#4ecca3;font-size:11px;")
-        layout.addWidget(self._status)
+        open_btn = QPushButton("Open Nexus API key page")
+        open_btn.setFlat(True)
+        open_btn.setCursor(Qt.PointingHandCursor)
+        open_btn.setStyleSheet(
+            "QPushButton{color:#7b8cde;font-size:10px;text-align:left;"
+            "padding:0;border:none;background:transparent;}"
+            "QPushButton:hover{color:#e0e0ec;text-decoration:underline;}"
+        )
+        open_btn.clicked.connect(self._open_nexus)
+        ml.addWidget(open_btn)
 
+        self._manual_widget.setVisible(False)
+        layout.addWidget(self._manual_widget)
+
+        # ── Buttons ──────────────────────────────────────
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btns.accepted.connect(self._on_ok)
-        btns.rejected.connect(self.reject)
+        btns.rejected.connect(self._on_cancel)
         layout.addWidget(btns)
+
+    # ── SSO flow ──────────────────────────────────────────
+
+    def _on_sso_start(self):
+        """Start the WebSocket SSO flow."""
+        self._sso_btn.setText("  Waiting for authorization...")
+        self._sso_btn.setEnabled(False)
+        self._sso_status.setText("Approve the request in your browser to continue.")
+        self._sso_status.setStyleSheet("color:#8888aa;font-size:11px;")
+        self._sso_status.setVisible(True)
+
+        self._sso_client = NexusSSOClient()
+        self._sso_client.start()
+
+        self._poll_timer = QTimer(self)
+        self._poll_timer.timeout.connect(self._poll_sso)
+        self._poll_timer.start(500)
+
+    def _poll_sso(self):
+        """Check if SSO has returned a key or error."""
+        if not self._sso_client:
+            return
+
+        key, err = self._sso_client.poll()
+
+        if key:
+            self._stop_sso()
+            self.api_key = key
+            self.accept()
+        elif err:
+            self._stop_sso()
+            self._sso_status.setText(f"Authorization failed: {err}")
+            self._sso_status.setStyleSheet("color:#e74c3c;font-size:11px;")
+            self._sso_btn.setText("  Authorize with Nexus Mods")
+            self._sso_btn.setEnabled(True)
+
+    def _stop_sso(self):
+        """Clean up SSO client and timer."""
+        if self._poll_timer:
+            self._poll_timer.stop()
+            self._poll_timer = None
+        if self._sso_client:
+            self._sso_client.stop()
+            self._sso_client = None
+
+    # ── Manual fallback ──────────────────────────────────
+
+    def _toggle_manual(self):
+        visible = not self._manual_widget.isVisible()
+        self._manual_widget.setVisible(visible)
+        self._manual_toggle.setText(
+            "Hide manual entry" if visible else "Paste API key manually"
+        )
 
     def _open_nexus(self):
         import webbrowser
         webbrowser.open("https://www.nexusmods.com/users/myaccount?tab=api+access")
-        self._status.setText("Opened browser — paste your key above.")
 
     def _on_ok(self):
         key = self._key_edit.text().strip()
         if key:
+            self._stop_sso()
             self.api_key = key
             self.accept()
+
+    def _on_cancel(self):
+        self._stop_sso()
+        self.reject()
+
+    def closeEvent(self, event):
+        self._stop_sso()
+        super().closeEvent(event)
 
 
 class NexusWidget(QWidget):
@@ -92,6 +205,9 @@ class NexusWidget(QWidget):
         self._config = config
         self._build()
         self._refresh()
+        # Re-validate cached key in background to catch expired/revoked keys
+        if self._config.get_nexus_api_key():
+            QTimer.singleShot(500, self._revalidate_key)
 
     def _build(self):
         self._layout = QVBoxLayout(self)
@@ -140,13 +256,6 @@ class NexusWidget(QWidget):
         ul.addLayout(user_info)
         ul.addStretch()
 
-        logout_btn = QPushButton("✕")
-        logout_btn.setObjectName("sidebar_mgmt_btn")
-        logout_btn.setFixedSize(24, 24)
-        logout_btn.setToolTip("Disconnect account")
-        logout_btn.clicked.connect(self._on_logout)
-        ul.addWidget(logout_btn)
-
         self._layout.addWidget(self._user_widget)
 
     def _refresh(self):
@@ -160,10 +269,39 @@ class NexusWidget(QWidget):
         if logged_in:
             self._name_lbl.setText(user.get("name", "User"))
             is_premium = user.get("is_premium", False) or user.get("is_supporter", False)
-            self._status_lbl.setText("Premium ✓" if is_premium else "Free")
+            self._status_lbl.setText("Premium" if is_premium else "Free")
             self._status_lbl.setStyleSheet(
                 "font-size:10px;color:#4ecca3;" if is_premium else "font-size:10px;color:#8888aa;"
             )
+
+    def _revalidate_key(self):
+        """Background check that the stored API key is still valid."""
+        key = self._config.get_nexus_api_key()
+        if not key:
+            return
+        self._thread = QThread()
+        self._worker = _ValidateWorker(key)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.finished.connect(self._on_revalidated)
+        self._worker.finished.connect(self._thread.quit)
+        self._thread.start()
+
+    def _on_revalidated(self, result: dict):
+        if "error" in result:
+            print(f"[NEXUS] Stored API key is invalid, clearing auth", flush=True)
+            self._config.clear_nexus_auth()
+            self._refresh()
+            self.auth_changed.emit("")
+        else:
+            # Update cached user info in case it changed
+            self._config.set_nexus_user_info({
+                "name": result.get("name", ""),
+                "is_premium": result.get("is_premium", False),
+                "is_supporter": result.get("is_supporter", False),
+                "profile_url": result.get("profile_url", ""),
+            })
+            self._refresh()
 
     def _on_login(self):
         dlg = NexusApiKeyDialog(self)
@@ -171,7 +309,7 @@ class NexusWidget(QWidget):
             self._validate_and_save(dlg.api_key)
 
     def _validate_and_save(self, api_key: str):
-        self._login_btn.setText("Validating…")
+        self._login_btn.setText("Validating...")
         self._login_btn.setEnabled(False)
 
         self._thread = QThread()

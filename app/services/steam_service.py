@@ -29,9 +29,47 @@ def get_cover_art_url(steam_app_id: int) -> str:
     return f"{STEAM_CDN}/{steam_app_id}/library_600x900.jpg"
 
 
+def get_header_url(steam_app_id: int) -> str:
+    return f"{STEAM_CDN}/{steam_app_id}/header.jpg"
+
+
 def download_cover_art(steam_app_id: int, save_path: str) -> bool:
     """Download cover art to save_path. Returns True on success."""
     url = get_cover_art_url(steam_app_id)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "FromSoftModManager/2.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = resp.read()
+            Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(save_path, 'wb') as f:
+                f.write(data)
+            return True
+    except Exception:
+        return False
+
+
+def download_header(steam_app_id: int, save_path: str) -> bool:
+    """Download Steam header image to save_path. Returns True on success."""
+    url = get_header_url(steam_app_id)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "FromSoftModManager/2.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = resp.read()
+            Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(save_path, 'wb') as f:
+                f.write(data)
+            return True
+    except Exception:
+        return False
+
+
+def get_logo_url(steam_app_id: int) -> str:
+    return f"{STEAM_CDN}/{steam_app_id}/logo.png"
+
+
+def download_logo(steam_app_id: int, save_path: str) -> bool:
+    """Download Steam logo (transparent PNG) to save_path. Returns True on success."""
+    url = get_logo_url(steam_app_id)
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "FromSoftModManager/2.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:

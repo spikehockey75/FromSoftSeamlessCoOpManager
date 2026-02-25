@@ -53,6 +53,17 @@ class SettingsDialog(QDialog):
         nexus_help.setOpenExternalLinks(True)
         nexus_help.setStyleSheet("font-size:11px;")
         nexus_layout.addRow("", nexus_help)
+
+        self._signout_btn = QPushButton("Sign Out")
+        self._signout_btn.setFixedWidth(80)
+        self._signout_btn.setStyleSheet(
+            "QPushButton{color:#e74c3c;font-size:11px;border:1px solid #e74c3c;"
+            "background:transparent;border-radius:4px;padding:4px 12px;}"
+            "QPushButton:hover{color:#fff;background:#e74c3c;}"
+        )
+        self._signout_btn.clicked.connect(self._sign_out)
+        nexus_layout.addRow("", self._signout_btn)
+
         layout.addWidget(nexus_group)
 
         # ── ME3 ───────────────────────────────────────────────
@@ -77,6 +88,11 @@ class SettingsDialog(QDialog):
         me2_import_btn.setObjectName("btn_blue")
         me2_import_btn.clicked.connect(self._import_me2)
         me3_layout.addRow("", me2_import_btn)
+
+        me3_import_btn = QPushButton("Import from ME3 Profiles...")
+        me3_import_btn.setObjectName("btn_blue")
+        me3_import_btn.clicked.connect(self._import_me3_profiles)
+        me3_layout.addRow("", me3_import_btn)
 
         layout.addWidget(me3_group)
 
@@ -111,7 +127,9 @@ class SettingsDialog(QDialog):
         layout.addWidget(btn_box)
 
     def _load(self):
-        self._nexus_key.setText(self._config.get_nexus_api_key())
+        key = self._config.get_nexus_api_key()
+        self._nexus_key.setText(key)
+        self._signout_btn.setVisible(bool(key))
         self._me3_path.setText(self._config.get_me3_path())
         self._use_me3.setChecked(self._config.get_use_me3())
         self._mods_dir.setText(self._config.get_mods_dir())
@@ -150,6 +168,33 @@ class SettingsDialog(QDialog):
         dlg = ME2MigrationDialog(merged, me3_path, self._config, parent=self)
         dlg.exec()
 
+    def _import_me3_profiles(self):
+        from app.core.me3_service import find_me3_executable
+        me3_path = find_me3_executable(self._config.get_me3_path())
+        if not me3_path:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self, "ME3 Not Found",
+                "Mod Engine 3 was not found. Please set the ME3 path first."
+            )
+            return
+        from app.core.me2_migrator import (scan_me3_profiles,
+                                           scan_game_folders,
+                                           merge_scan_results)
+        me3_results = scan_me3_profiles(me3_path)
+        game_results = scan_game_folders(self._config)
+        merged = merge_scan_results(me3_results, game_results)
+        if not merged:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "No Mods Found",
+                "No importable mods were found in existing ME3 profiles."
+            )
+            return
+        from app.ui.dialogs.me2_migration_dialog import ME2MigrationDialog
+        dlg = ME2MigrationDialog(merged, me3_path, self._config, parent=self)
+        dlg.exec()
+
     def _browse_mods_dir(self):
         path = QFileDialog.getExistingDirectory(
             self, "Select Mod Storage Directory", self._mods_dir.text() or ""
@@ -159,6 +204,12 @@ class SettingsDialog(QDialog):
 
     def _reset_mods_dir(self):
         self._mods_dir.setText(_DEFAULT_MODS_DIR)
+
+    def _sign_out(self):
+        self._config.clear_nexus_auth()
+        self._nexus_key.clear()
+        self._signout_btn.setVisible(False)
+        self.settings_saved.emit()
 
     def _save(self):
         key = self._nexus_key.text().strip()

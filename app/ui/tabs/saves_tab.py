@@ -42,10 +42,14 @@ class SavesTab(QWidget):
         outer.addWidget(scroll)
 
     def _clear(self):
-        while self._layout.count():
-            item = self._layout.takeAt(0)
+        def _remove_item(item):
             if item.widget():
                 item.widget().deleteLater()
+            elif item.layout():
+                while item.layout().count():
+                    _remove_item(item.layout().takeAt(0))
+        while self._layout.count():
+            _remove_item(self._layout.takeAt(0))
 
     def _load(self):
         self._clear()
@@ -75,13 +79,17 @@ class SavesTab(QWidget):
 
         transfer_row.addWidget(self._transfer_card(
             "Base Game → Co-op",
-            f"Copy your {base_ext} save to {coop_ext} so you can play co-op.",
+            f"Copy your {base_ext} save to {coop_ext} so you can play co-op.\n"
+            f"Your existing co-op save will be backed up first.",
             "base_to_coop", "btn_blue"
         ))
         transfer_row.addWidget(self._transfer_card(
             "Co-op → Base Game",
-            f"Copy your {coop_ext} save back to {base_ext} for solo play.",
-            "coop_to_base", "btn_warn"
+            f"Copy your {coop_ext} save back to {base_ext} for solo play.\n"
+            f"Your existing base save will be backed up first.",
+            "coop_to_base", "btn_warn",
+            warning="Using co-op modified saves in the base game may "
+                    "trigger anti-cheat and risk a ban."
         ))
         self._layout.addLayout(transfer_row)
 
@@ -129,7 +137,8 @@ class SavesTab(QWidget):
         )
         return lbl
 
-    def _transfer_card(self, title: str, desc: str, direction: str, btn_name: str) -> QFrame:
+    def _transfer_card(self, title: str, desc: str, direction: str,
+                       btn_name: str, warning: str = "") -> QFrame:
         card = QFrame()
         card.setObjectName("card")
         layout = QVBoxLayout(card)
@@ -144,6 +153,12 @@ class SavesTab(QWidget):
         d.setStyleSheet("font-size:11px;color:#8888aa;")
         d.setWordWrap(True)
         layout.addWidget(d)
+
+        if warning:
+            w = QLabel(f"⚠  {warning}")
+            w.setStyleSheet("font-size:11px;color:#ff9800;font-weight:600;")
+            w.setWordWrap(True)
+            layout.addWidget(w)
 
         btn = QPushButton(f"Transfer →")
         btn.setObjectName(btn_name)
@@ -220,19 +235,34 @@ class SavesTab(QWidget):
         restore_coop_btn.clicked.connect(lambda: self._on_restore(ts_raw, "coop"))
         layout.addWidget(restore_coop_btn)
 
-        del_btn = QPushButton("✕")
-        del_btn.setObjectName("btn_danger")
-        del_btn.setFixedSize(28, 26)
+        del_btn = QPushButton("Delete")
+        del_btn.setFixedHeight(26)
+        del_btn.setStyleSheet(
+            "QPushButton{color:#e74c3c;font-size:11px;border:1px solid #e74c3c;"
+            "background:transparent;border-radius:4px;padding:2px 10px;}"
+            "QPushButton:hover{color:#fff;background:#e74c3c;}"
+        )
         del_btn.clicked.connect(lambda: self._on_delete_backup(ts_raw))
         layout.addWidget(del_btn)
 
         return entry
 
     def _on_transfer(self, direction: str):
-        label = "Base → Co-op" if direction == "base_to_coop" else "Co-op → Base"
+        if direction == "base_to_coop":
+            msg = ("This will copy your base game save files to the co-op save slot.\n\n"
+                   "Your existing co-op saves will be backed up automatically before "
+                   "they are overwritten.")
+        else:
+            msg = ("This will copy your co-op save files to the base game save slot.\n\n"
+                   "Your existing base game saves will be backed up automatically "
+                   "before they are overwritten.\n\n"
+                   "⚠ WARNING: Using co-op modified saves in the base game may "
+                   "trigger anti-cheat detection and risk a ban. "
+                   "Proceed at your own risk.")
+        label = "Base Game → Co-op" if direction == "base_to_coop" else "Co-op → Base Game"
         dlg = ConfirmDialog(
-            "Transfer Saves",
-            f"Transfer saves: {label}?\nThe destination saves will be backed up first.",
+            f"Transfer: {label}",
+            msg,
             confirm_text="Transfer",
             parent=self
         )
@@ -246,6 +276,17 @@ class SavesTab(QWidget):
             self._load()
 
     def _on_backup(self):
+        dlg = ConfirmDialog(
+            "Create Backup",
+            "This will create a backup of all your current save files "
+            "(both base game and co-op).\n\n"
+            "The backup will be stored alongside your saves and can be "
+            "restored later.",
+            confirm_text="Backup Now",
+            parent=self
+        )
+        if dlg.exec() != QDialog.Accepted:
+            return
         result = create_backup(self._game_info, self._game_id)
         level = "success" if result["success"] else "error"
         self.log_message.emit(result["message"], level)
@@ -254,9 +295,13 @@ class SavesTab(QWidget):
 
     def _on_restore(self, timestamp: str, dest_type: str):
         label = "Base Game" if dest_type == "base" else "Co-op"
+        ts_display = timestamp.replace("_", " ")
         dlg = ConfirmDialog(
-            "Restore Backup",
-            f"Restore this backup to {label}?\nYour current {label} saves will be backed up first.",
+            f"Restore Backup → {label}",
+            f"This will restore the backup from {ts_display} to your "
+            f"{label} save slot.\n\n"
+            f"Your current {label} saves will be backed up automatically "
+            f"before they are overwritten.",
             confirm_text="Restore",
             parent=self
         )
@@ -270,9 +315,11 @@ class SavesTab(QWidget):
             self._load()
 
     def _on_delete_backup(self, timestamp: str):
+        ts_display = timestamp.replace("_", " ")
         dlg = ConfirmDialog(
             "Delete Backup",
-            f"Permanently delete backup from {timestamp.replace('_', ' ')}?",
+            f"Permanently delete the backup from {ts_display}?\n\n"
+            f"This cannot be undone.",
             confirm_text="Delete",
             parent=self
         )

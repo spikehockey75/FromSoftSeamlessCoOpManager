@@ -139,6 +139,22 @@ def parse_ini_file(file_path: str, defaults_dict: dict = None) -> list:
     return sections
 
 
+def read_ini_value(file_path: str, key: str) -> str | None:
+    """Read a single value from an INI file by key name. Returns None if not found."""
+    try:
+        with open(file_path, "r", encoding="utf-8-sig") as f:
+            for line in f:
+                stripped = line.strip()
+                if stripped.startswith(";") or stripped.startswith("[") or "=" not in stripped:
+                    continue
+                k, _, v = stripped.partition("=")
+                if k.strip().lower() == key.lower():
+                    return v.strip()
+    except (OSError, IOError):
+        pass
+    return None
+
+
 def save_ini_settings(file_path: str, settings_dict: dict):
     """Write changed values back to INI preserving comments/formatting."""
     with open(file_path, "r", encoding="utf-8-sig") as f:
