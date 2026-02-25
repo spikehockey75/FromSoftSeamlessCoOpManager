@@ -288,7 +288,7 @@ class MainWindow(QMainWindow):
         use_me3 = self._config.get_use_me3()
         me3_path = find_me3_executable(self._config.get_me3_path())
         launcher_path = game_info.get("launcher_path", "")
-        has_extra_mods = self._game_needs_me3(game_id)
+        me3_supported = ME3_GAME_MAP.get(game_id) is not None
         pending = self._pending
 
         self._terminal.log(f"Launching {name}…", "info")
@@ -296,9 +296,9 @@ class MainWindow(QMainWindow):
         def _launch():
             proc = None
             method = ""
-            # Use ME3 when there are non-co-op mods that need its loader.
-            # Otherwise prefer the direct co-op launcher — it's version-matched.
-            if use_me3 and me3_path and ME3_GAME_MAP.get(game_id) and has_extra_mods:
+            # Use ME3 for all ME3-supported games when enabled.
+            # Fall back to direct co-op launcher if ME3 fails.
+            if use_me3 and me3_path and me3_supported:
                 proc = launch_game_with_me3(game_id, me3_path)
                 if proc:
                     method = "ME3"
@@ -314,18 +314,6 @@ class MainWindow(QMainWindow):
             pending.put(("launch_result", name, proc is not None, method))
 
         threading.Thread(target=_launch, daemon=True).start()
-
-    def _game_needs_me3(self, game_id: str) -> bool:
-        """Return True if the game has non-co-op mods that require ME3 for loading."""
-        mods = self._config.get_game_mods(game_id)
-        coop_id = f"{game_id}-coop"
-        for m in mods:
-            if not m.get("enabled") or not m.get("path"):
-                continue
-            if m["id"] == coop_id:
-                continue
-            return True
-        return False
 
     # ------------------------------------------------------------------
     # Logging
