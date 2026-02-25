@@ -49,7 +49,7 @@ GAME_DEFINITIONS = {
         "nexus_mod_id": 899,
         "nexus_url": "https://www.nexusmods.com/darksoulsremastered/mods/899",
         "zip_pattern": r"ds1.*seamless.*co-?op.*\.zip$",
-        "launcher_relative": os.path.join("Game", "ds1sc_launcher.exe"),
+        "launcher_relative": os.path.join("Game", "SeamlessCoop", "ds1sc_launcher.exe"),
         "mod_marker_relative": os.path.join("Game", "SeamlessCoop"),
         "me3_game_name": None,
         "defaults": {
@@ -83,7 +83,7 @@ GAME_DEFINITIONS = {
         "nexus_mod_id": 1895,
         "nexus_url": "https://www.nexusmods.com/darksouls3/mods/1895",
         "zip_pattern": r"ds3.*seamless.*co-?op.*\.zip$",
-        "launcher_relative": os.path.join("Game", "ds3sc_launcher.exe"),
+        "launcher_relative": os.path.join("Game", "SeamlessCoop", "ds3sc_launcher.exe"),
         "mod_marker_relative": os.path.join("Game", "SeamlessCoop"),
         "me3_game_name": "darksouls3",
         "defaults": {
@@ -119,7 +119,7 @@ GAME_DEFINITIONS = {
         "nexus_mod_id": 510,
         "nexus_url": "https://www.nexusmods.com/eldenring/mods/510",
         "zip_pattern": r"^(seamless|er\s+seamless|eldenring\s+seamless|elden\s+ring\s+seamless)\s+co-?op.*\.zip$",
-        "launcher_relative": os.path.join("Game", "ersc_launcher.exe"),
+        "launcher_relative": os.path.join("Game", "SeamlessCoop", "ersc_launcher.exe"),
         "mod_marker_relative": os.path.join("Game", "SeamlessCoop"),
         "me3_game_name": "eldenring",
         "defaults": {
@@ -154,7 +154,7 @@ GAME_DEFINITIONS = {
         "nexus_mod_id": 3,
         "nexus_url": "https://www.nexusmods.com/eldenringnightreign/mods/3",
         "zip_pattern": r"nightreign.*seamless.*co-?op.*\.zip$|ern.*seamless.*co-?op.*\.zip$",
-        "launcher_relative": os.path.join("Game", "nrsc_launcher.exe"),
+        "launcher_relative": os.path.join("Game", "SeamlessCoop", "nrsc_launcher.exe"),
         "mod_marker_relative": os.path.join("Game", "SeamlessCoop"),
         "me3_game_name": "nightreign",
         "defaults": {
