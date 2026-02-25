@@ -303,9 +303,9 @@ class MainWindow(QMainWindow):
                 if proc:
                     method = "ME3"
                 else:
-                    # ME3 failed — it already started the game process (vanilla),
+                    # ME3 failed — it may have started the game process already,
                     # so don't try to launch again via direct launcher.
-                    pending.put(("launch_result", name, False, "ME3 failed — game may be running without mods"))
+                    pending.put(("launch_result", name, False, "ME3 attach failed — close the game and try again"))
                     return
             if not proc and launcher_path:
                 proc = launch_game_direct(launcher_path)

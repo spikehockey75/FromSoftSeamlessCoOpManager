@@ -352,7 +352,7 @@ def launch_game_with_me3(game_id: str, me3_path: str, terminal_callback=None) ->
         reader.start()
 
         # Give ME3 a moment to start and report errors
-        reader.join(timeout=6)
+        reader.join(timeout=8)
 
         # Also check ME3 log files — stdout may be buffered but logs are flushed
         if not has_error:
@@ -360,7 +360,7 @@ def launch_game_with_me3(game_id: str, me3_path: str, terminal_callback=None) ->
 
         if has_error or (proc.poll() is not None and proc.returncode != 0):
             if terminal_callback:
-                terminal_callback("[ME3] Attach failed — ME3 may need an update")
+                terminal_callback("[ME3] Attach failed — close the game and try again")
             return None
 
         return proc
