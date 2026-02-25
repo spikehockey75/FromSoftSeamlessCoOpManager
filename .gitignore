@@ -1,7 +1,29 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
+*.pyo
+
+# App config (contains API keys)
 config.json
-icons/
+
+# Downloaded mods
+mods/
+
+# Build artifacts
+build/output/
+dist/
+*.spec
+
+# IDE / editor
+.vscode/
+.claude/
+.idea/
+
+# OS
 .DS_Store
 Thumbs.db
+nul
+
+# Legacy
+icons/
