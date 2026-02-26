@@ -3,7 +3,7 @@
 ; Run after build.py produces the dist/FromSoftModManager folder.
 
 #define AppName "FromSoft Mod Manager"
-#define AppVersion "2.0.0"
+#define AppVersion Trim(StringChange(FileRead(AddBackslash(SourcePath) + "..\VERSION"), #13, ""))
 #define AppPublisher "FromSoftModManager"
 #define AppURL "https://github.com/spikehockey75/FromSoftModManager"
 #define AppExeName "FromSoftModManager.exe"
