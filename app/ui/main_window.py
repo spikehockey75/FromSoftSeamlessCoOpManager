@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                 QStackedWidget, QProgressDialog, QDialog,
                                 QApplication, QSizePolicy)
 from PySide6.QtCore import Qt, Signal, QThread, QObject, QTimer, QSize
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QPixmap
 
 from app.config.config_manager import ConfigManager
 from app.core.game_scanner import scan_for_games
@@ -49,17 +49,8 @@ class MainWindow(QMainWindow):
         self._poll_timer.timeout.connect(self._poll_updates)
         self._poll_timer.start(200)
 
-        self._set_icon()
         self._build()
         self._load_games()
-
-    def _set_icon(self):
-        icon_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "FSSIcon.ico"
-        )
-        if os.path.isfile(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
 
     # ------------------------------------------------------------------
     # Layout construction

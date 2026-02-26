@@ -4,12 +4,31 @@ Nexus Mods API service — mod info, updates, downloads.
 
 import json
 import os
+import sys
 import urllib.request
 import urllib.error
 import urllib.parse
 from app.core.mod_updater import version_compare
 
 NEXUS_API_BASE = "https://api.nexusmods.com/v1"
+APPLICATION_NAME = "FromSoft Mod Manager"
+
+
+def _read_version() -> str:
+    """Read app version from the VERSION file."""
+    if getattr(sys, 'frozen', False):
+        base = sys._MEIPASS
+    else:
+        base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    version_path = os.path.join(base, "VERSION")
+    try:
+        with open(version_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return "2.0.0"
+
+
+APPLICATION_VERSION = _read_version()
 
 
 def parse_nexus_url(url: str) -> "tuple[str, int] | None":
@@ -24,7 +43,12 @@ class NexusService:
         self.api_key = api_key
 
     def _headers(self) -> dict:
-        h = {"User-Agent": "FromSoftModManager/2.0", "Accept": "application/json"}
+        h = {
+            "Application-Name": APPLICATION_NAME,
+            "Application-Version": APPLICATION_VERSION,
+            "User-Agent": f"FromSoftModManager/{APPLICATION_VERSION}",
+            "Accept": "application/json",
+        }
         if self.api_key:
             h["apikey"] = self.api_key
         return h
@@ -216,7 +240,7 @@ class NexusService:
             parsed = urllib.parse.urlsplit(url)
             encoded_path = urllib.parse.quote(parsed.path, safe="/:@!$&'()*+,;=")
             url = urllib.parse.urlunsplit(parsed._replace(path=encoded_path))
-            req = urllib.request.Request(url, headers={"User-Agent": "FromSoftModManager/2.0"})
+            req = urllib.request.Request(url, headers=self._headers())
             with urllib.request.urlopen(req, timeout=60) as resp:
                 total = int(resp.headers.get('Content-Length', 0))
                 downloaded = 0

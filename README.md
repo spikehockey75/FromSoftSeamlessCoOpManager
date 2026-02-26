@@ -209,7 +209,6 @@ fromsoft_coop_manager/
 ├── main.py                      Entry point
 ├── VERSION                      App version string
 ├── requirements.txt             Python dependencies
-├── FSSIcon.ico                  App icon
 ├── app/
 │   ├── config/
 │   │   ├── config_manager.py    Config wrapper (config.json)

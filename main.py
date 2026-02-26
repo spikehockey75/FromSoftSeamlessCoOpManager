@@ -38,12 +38,27 @@ def main():
     from PySide6.QtCore import Qt, QCoreApplication
     from PySide6.QtGui import QFont
 
+    # Tell Windows this is its own app, not "python.exe" — fixes taskbar icon
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "FromSoftModManager.FromSoftModManager.2"
+        )
+    except Exception:
+        pass
+
     QCoreApplication.setApplicationName("FromSoft Mod Manager")
     QCoreApplication.setOrganizationName("FromSoftModManager")
     QCoreApplication.setApplicationVersion("2.0.0")
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")  # base style; overridden by QSS
+
+    # App-wide window icon (title bar, taskbar, alt-tab, all dialogs)
+    from PySide6.QtGui import QIcon
+    icon_path = os.path.join(BASE_DIR, "resources", "icons", "fsmm.ico")
+    if os.path.isfile(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
 
     # Load dark theme
     qss_path = os.path.join(BASE_DIR, "resources", "dark_theme.qss")

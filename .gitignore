@@ -26,5 +26,5 @@ dist/
 Thumbs.db
 nul
 
-# Legacy
-icons/
+# Legacy (root-level only)
+/icons/

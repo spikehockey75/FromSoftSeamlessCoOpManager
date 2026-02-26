@@ -14,7 +14,7 @@ BUILD_DIR = os.path.join(BASE_DIR, "build_pyinstaller")
 
 APP_NAME = "FromSoftModManager"
 ENTRY_POINT = os.path.join(BASE_DIR, "main.py")
-ICON = os.path.join(BASE_DIR, "FSSIcon.ico")
+ICON = os.path.join(BASE_DIR, "resources", "icons", "fsmm.ico")
 
 cmd = [
     sys.executable, "-m", "PyInstaller",
