@@ -1,98 +1,96 @@
-# FromSoft Seamless Co-op Manager
+# FromSoft Mod Manager
 
-An all-in-one desktop tool for managing Seamless Co-op mods across multiple FromSoftware games. Install mods, configure settings, manage save files, launch co-op sessions, and create desktop shortcuts — all from a clean web-based dashboard running locally on your PC.
+A native Windows desktop app for managing mods across FromSoftware
+games. Install mods from Nexus, configure settings, manage saves,
+and launch games with Mod Engine 3 — all from a single app.
 
-> **Note:** This is a **manager tool only**. The Seamless Co-op mods themselves are created by [LukeYui](https://github.com/LukeYui). All credit for the actual mods goes to them — this project simply provides a convenient way to install, configure, and launch them.
+> **Note:** This is a **manager tool only**. The Seamless Co-op mods
+> are created by [LukeYui](https://github.com/LukeYui). All credit
+> for the mods goes to them.
+>
+> Game launching and mod loading is powered by
+> [Mod Engine 3](https://github.com/garyttierney/me3)
+> by Gary Tierney.
 
 ![Windows](https://img.shields.io/badge/platform-Windows-blue)
-![Python](https://img.shields.io/badge/python-3.8%2B-green)
+![Python](https://img.shields.io/badge/python-3.10%2B-green)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-> **Quick install:** Download `Setup_FromSoft_Coop_Manager.bat` from the latest [Release](https://github.com/spikehockey75/FromSoftSeamlessCoOpManager/releases), double-click it, and you're done.
-
-## Screenshots
-
-<div align="center">
-
-| Dashboard | Settings |
-|-----------|----------|
-| [![Dashboard](images/dashboard.png)](images/dashboard.png) | [![Settings](images/settings-tab.png)](images/settings-tab.png) |
-
-| Save Manager | Mod Installer |
-|--------------|---------------|
-| [![Save Manager](images/save-manager.png)](images/save-manager.png) | [![Mod Installer](images/mod-installer.png)](images/mod-installer.png) |
-
-</div>
+> **Quick install:** Download the installer from the latest
+> [Release](https://github.com/spikehockey75/FromSoftSeamlessCoOpManager/releases)
+> and run it.
 
 ---
 
 ## Supported Games
 
-| Game | Co-op Mod | Nexus Mods |
-|------|-----------|------------|
-| **Armored Core 6: Fires of Rubicon** | AC6 Seamless Co-op | [Link](https://www.nexusmods.com/armoredcore6firesofrubicon/mods/3) |
-| **Dark Souls Remastered** | DSR Seamless Co-op | [Link](https://www.nexusmods.com/darksoulsremastered/mods/899) |
-| **Dark Souls III** | DS3 Seamless Co-op | [Link](https://www.nexusmods.com/darksouls3/mods/1895) |
-| **Elden Ring** | Elden Ring Seamless Co-op | [Link](https://www.nexusmods.com/eldenring/mods/510) |
-| **Elden Ring Nightreign** | ER Nightreign Seamless Co-op | [Link](https://www.nexusmods.com/eldenringnightreign/mods/3) |
+| Game                                  | Co-op Mod                      | Nexus Mods                                                                              |
+|---------------------------------------|--------------------------------|-----------------------------------------------------------------------------------------|
+| **Armored Core 6: Fires of Rubicon**  | AC6 Seamless Co-op             | [Nexus page](https://www.nexusmods.com/armoredcore6firesofrubicon/mods/3)               |
+| **Dark Souls Remastered**             | DSR Seamless Co-op             | [Nexus page](https://www.nexusmods.com/darksoulsremastered/mods/899)                    |
+| **Dark Souls III**                    | DS3 Seamless Co-op             | [Nexus page](https://www.nexusmods.com/darksouls3/mods/1895)                            |
+| **Elden Ring**                        | Elden Ring Seamless Co-op      | [Nexus page](https://www.nexusmods.com/eldenring/mods/510)                              |
+| **Elden Ring Nightreign**             | ER Nightreign Seamless Co-op   | [Nexus page](https://www.nexusmods.com/eldenringnightreign/mods/3)                      |
+| **Sekiro: Shadows Die Twice**         | — (ME3 mod loading only)       | [Nexus page](https://www.nexusmods.com/sekiro)                                          |
 
-> The tool automatically scans all your Steam library folders across all drives and detects which games you have installed. It uses Steam's `appmanifest` files to verify a game is truly installed (not just leftover files from an uninstall).
+The app auto-detects installed Steam games by scanning all library
+folders across all drives.
 
 ---
 
 ## Features
 
-### 🏠 Game Dashboard (Landing Page)
+### Mod Management
 
-- Shows all detected games as cards with **Steam cover art**
-- Each card displays the mod installation status (installed / not installed)
-- Three actions per game:
-  - **Launch Co-op** — starts the co-op mod launcher directly
-  - **Manage** — opens the game's detail view with all sub-tabs
-  - **Desktop Shortcut** — creates a Windows desktop shortcut for the game's co-op launcher, using the game's Steam cover art as the icon and named clearly (e.g., "Dark Souls III Co-op")
+- **One-click install** from Nexus Mods — paste a URL or browse
+  trending/recommended mods
+- **Automatic update checking** against Nexus Mods versions
+- **Enable/disable** individual mods via toggle switches
+- **Archive support** — `.zip`, `.7z`, and `.rar` mod archives
+- **Progress tracking** — download and install progress shown
+  in-dialog
+- **Add third-party mods** by pasting a Nexus URL or selecting
+  a local archive
 
-### 🚀 Launch Tab
+### Mod Engine 3 Integration
 
-- Displays the game's full Steam library cover art
-- Double-click the cover art to launch the co-op mod
-- Visual feedback during launch (launching → launched states)
-- Warning shown if the launcher executable is missing
+- Generates and manages ME3 TOML profiles per game
+- Structured profile viewer showing native DLLs and asset packages
+- Collapsible raw TOML view for power users
+- Games launched via ME3 for proper DLL injection and asset loading
+- Auto-downloads ME3 on first launch if not installed
 
-### ⚙️ Settings Tab
+### Nexus Mods Integration
 
-- Reads and displays all settings from the mod's `.ini` config file
-- Automatically determines input types from the mod's own comments:
-  - **Dropdowns** for settings with limited choices (0/1, on/off)
-  - **Number fields** with min/max ranges
-  - **Text inputs** for passwords and open values
-- Shows the setting description (pulled from INI comments)
-- **Dirty tracking** — changed fields are highlighted with a change indicator
-- **Save confirmation** — shows a table of all changes before saving
-- **Undo button** — reverts all unsaved changes
-- **Reset to Defaults** — restores every setting to the mod author's default values
-- **Unsaved changes protection** — prompts before switching tabs or closing the browser
-- Changes are saved directly to the mod's config file on disk
+- **SSO authentication** — click "Authorize with Nexus Mods",
+  approve in browser, done (no copy-paste needed)
+- Manual API key fallback for users who prefer it
+- User profile display in sidebar
+- Trending and recommended mods per game
+- Direct download with Nexus Premium support
 
-### 💾 Save Manager Tab
+### Mod Settings
 
-- Lists all save files in the game's `%APPDATA%` save directory
-- Shows base game saves (`.sl2`) and co-op saves (`.co2`) side by side
-- **Transfer** — copies a base save to a co-op save (or vice versa), with a timestamp to prove freshness
-- **Backup** — creates timestamped backups of individual save files
-- **Restore** — restores any backup with a confirmation dialog
-- **Delete** — removes backups with confirmation
+- Edit mod `.ini` settings through a clean dialog UI
+- Smart type inference — dropdowns, number fields, and text inputs
+  based on INI comments
+- Change highlighting and save confirmation
+- Reset to defaults
 
-> ⚠️ **Ban Risk Warning:** Transferring co-op saves back to the base game (Co-op → Base Game) and then playing on official FromSoftware online servers may result in your account being flagged or banned. Co-op mod saves can contain data that the anti-cheat system considers illegitimate. **Use this feature at your own risk.** The authors of this tool are not responsible for any bans or penalties incurred.
+### Save Manager
 
-### 📦 Mod Installer Tab
+- View base game saves (`.sl2`) and co-op saves (`.co2`)
+- **Transfer** saves between base and co-op formats
+- **Backup and restore** with timestamps
+- Ban risk warnings for co-op-to-base transfers
 
-- Direct link to the mod's Nexus Mods page for downloading
-- Automatically scans your **Downloads folder** for matching mod zip files
-- One-click **Install** — extracts the zip into the correct game directory
-- **Delete** button next to each zip — removes the download with confirmation to keep your Downloads folder clean
-- Post-install cleanup prompt — after a successful install, asks if you'd like to delete the zip file
-- After installation, hidden tabs (Launch, Settings, Saves) are revealed automatically
-- **Refresh** button to re-scan Downloads
+### Game Launching
+
+- Launch via **Mod Engine 3** with all mods loaded
+- Fallback to direct co-op launcher for non-ME3 games
+- Error detection via ME3 log file checking
+- Desktop shortcut creation
+- Live Steam player counts (refreshes every 60 seconds)
 
 ---
 
@@ -100,51 +98,68 @@ An all-in-one desktop tool for managing Seamless Co-op mods across multiple From
 
 ### Prerequisites
 
-- **Windows 10/11**
+- **Windows 10/11** (64-bit)
 - **Steam** with at least one supported game installed
+- **Mod Engine 3** — the app will download and install it
+  automatically on first launch
+- **Nexus Mods account** — required for downloading and updating
+  mods ([create a free account](https://users.nexusmods.com/register))
 
-> That's it. The installer handles everything else — Python, dependencies, shortcuts — all automatically.
+### From Release (Recommended)
 
-### Quick Install (Recommended)
+1. Download `FromSoftModManager_Setup_v*.exe` from the latest
+   [GitHub Release](https://github.com/spikehockey75/FromSoftSeamlessCoOpManager/releases)
+2. Run the installer — it installs to
+   `%LOCALAPPDATA%\FromSoftModManager`
+3. Launch from Start Menu or desktop shortcut
+4. On first launch, the app will prompt to install Mod Engine 3
+   if not found
 
-1. Download **`Setup_FromSoft_Coop_Manager.bat`** from the latest [GitHub Release](https://github.com/spikehockey75/FromSoftSeamlessCoOpManager/releases)
-2. **Double-click it**
-3. Done.
+### From Source (Development)
 
-The single installer file does everything:
-
-| Step | What it does |
-|------|-------------|
-| **1/6** | Installs Python automatically if missing (via `winget` or direct download) |
-| **2/6** | Downloads the full application from GitHub |
-| **3/6** | Installs to `%LOCALAPPDATA%\FromSoftCoopManager` |
-| **4/6** | Creates an isolated virtual environment |
-| **5/6** | Installs dependencies (Flask, Pillow) |
-| **6/6** | Creates launcher scripts and a **desktop shortcut** |
-
-### Alternative: Clone the Repo
-
-If you prefer to clone the repo (e.g., for development):
-```
+```bash
 git clone https://github.com/spikehockey75/FromSoftSeamlessCoOpManager.git
 cd FromSoftSeamlessCoOpManager
-Setup_FromSoft_Coop_Manager.bat
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python main.py
 ```
-The installer detects it's already inside the repo and skips the download step.
 
-### Launch the App
+---
 
-After installation, start the app any of these ways:
+## Building the Installer
 
-| Method | How |
-|--------|-----|
-| **Desktop shortcut** | Double-click "FromSoft Seamless Co-op Manager" on your Desktop |
-| **run.bat** | Double-click `run.bat` in the install folder |
-| **From installer** | The installer asks "Launch the app now?" at the end |
+Building the distributable `.exe` installer is a two-step process:
 
-Your default web browser opens automatically to `http://127.0.0.1:5000`.
+### Step 1: Build the app with PyInstaller
 
-> **No console window!** The desktop shortcut and installer both use a silent launcher — the server runs entirely in the background with no terminal window. Just close the browser tab when you're done.
+```bash
+.venv\Scripts\python build\build.py
+```
+
+This runs PyInstaller and outputs the bundled app to
+`dist/FromSoftModManager/`. The build script:
+
+- Bundles all Python code, PySide6, and dependencies into
+  a single directory
+- Includes the `resources/` folder (theme, cover art, logos)
+  and `VERSION` file
+- Produces `dist/FromSoftModManager/FromSoftModManager.exe`
+
+### Step 2: Create the installer with Inno Setup
+
+1. Install [Inno Setup 6+](https://jrsoftware.org/isinfo.php) (free)
+2. Open `build/installer.iss` in Inno Setup
+3. Click **Build > Compile** (or press F9)
+4. The installer is created at
+   `dist/FromSoftModManager_Setup_v2.0.0.exe`
+
+The installer:
+
+- Installs to `%LOCALAPPDATA%\FromSoftModManager` (no admin required)
+- Creates Start Menu and optional desktop shortcuts
+- Includes an uninstaller
+- Prompts to download ME3 if not already installed
 
 ---
 
@@ -152,65 +167,108 @@ Your default web browser opens automatically to `http://127.0.0.1:5000`.
 
 ### First Launch
 
-1. The app opens in your browser showing a welcome screen
-2. Click **🔍 Scan for Games** in the top-right corner
-3. The tool scans all drives for Steam libraries and co-op mods
-4. Game cards appear on the dashboard for each detected game
+1. Open the app — it will prompt to install Mod Engine 3 if needed
+2. Click **Scan Games** in the sidebar — scans all drives for
+   Steam libraries and games
+3. Detected games appear in the sidebar with live player counts
 
-### Managing a Game
+### Connecting Nexus Mods
 
-Click **Manage** on any game card to access its sub-tabs:
+1. Click **Connect Account** in the sidebar
+2. Click **Authorize with Nexus Mods** — your browser opens
+3. Click "Authorize" on the Nexus page — the app receives your
+   API key automatically
+4. Your Nexus username appears in the sidebar
 
-- **Launch** — launch the co-op mod directly
-- **Settings** — view and edit all mod configuration
-- **Saves** — manage save files and backups
-- **Mod Installer** — install or update the mod from a downloaded zip
+### Managing Mods
 
-Click **← All Games** to return to the dashboard (data is always refreshed).
+- **Mods tab** — install, update, enable/disable mods;
+  browse trending mods
+- **ME3 Profile tab** — view the ME3 mod loading configuration
+  (ME3-supported games only)
+- **Saves tab** — manage save files, backups, and transfers
 
-### Installing a Mod
+### Adding Mods
 
-1. Click **Manage** on the game card
-2. Go to the **Mod Installer** tab
-3. Click the **Nexus Mods link** to download the mod zip
-4. The tool automatically detects the zip in your Downloads folder
-5. Click **Install** — confirms and extracts into the game directory
-6. After install, you're prompted to **clean up** (delete) the zip from Downloads
-7. The Launch, Settings, and Saves tabs become available
+- Click **Add Mod** → paste a Nexus Mods URL
+  (e.g., `https://www.nexusmods.com/eldenring/mods/510`)
+- Or select a local `.zip` / `.7z` / `.rar` archive
+- Progress bar shows download and install status
 
-### Creating Desktop Shortcuts
+### Launching Games
 
-- **App shortcut** — created automatically by `Setup_FromSoft_Coop_Manager.bat` → "FromSoft Seamless Co-op Manager"
-- **Game shortcuts** — click **Desktop Shortcut** on any game card → creates e.g., "Armored Core 6 Co-op" with the game's Steam cover art as the icon, pointing directly to the co-op launcher
-
-### Rescanning
-
-If you install or uninstall a game, click **Scan for Games** again. The tool verifies Steam app manifests, so uninstalled games are automatically removed even if leftover mod files remain.
+Click the **Play** button in the sidebar. Games with ME3 support
+are launched via Mod Engine 3 for proper mod loading.
 
 ---
 
-## Folder Structure
+## Project Structure
 
+```text
+fromsoft_coop_manager/
+├── main.py                      Entry point
+├── VERSION                      App version string
+├── requirements.txt             Python dependencies
+├── app/
+│   ├── config/
+│   │   ├── config_manager.py    Config wrapper (config.json)
+│   │   └── game_definitions.py  Game metadata, paths, and defaults
+│   ├── core/
+│   │   ├── game_scanner.py      Steam library scanner
+│   │   ├── ini_parser.py        INI file parser with type inference
+│   │   ├── me2_migrator.py      Mod Engine 2 → ME3 migration
+│   │   ├── me3_service.py       ME3 CLI integration
+│   │   ├── mod_installer.py     Archive extraction and mod install
+│   │   ├── mod_updater.py       Version comparison and updates
+│   │   └── save_manager.py      Save file operations
+│   ├── services/
+│   │   ├── nexus_service.py     Nexus Mods REST API client
+│   │   ├── nexus_sso.py         Nexus SSO WebSocket auth flow
+│   │   └── steam_service.py     Steam player count and asset APIs
+│   └── ui/
+│       ├── main_window.py       Main window with sidebar + content
+│       ├── sidebar.py           Game list, player counts, Nexus
+│       ├── game_page.py         Per-game tab container
+│       ├── nexus_widget.py      Nexus auth widget (SSO + manual)
+│       ├── terminal_widget.py   Log output panel
+│       ├── tabs/
+│       │   ├── launch_tab.py    Game launcher with cover art
+│       │   ├── mods_tab.py      Mod cards, trending, install
+│       │   ├── saves_tab.py     Save file management
+│       │   └── settings_tab.py  ME3 profile viewer
+│       ├── dialogs/
+│       │   ├── add_mod_dialog.py      Add mod via URL or archive
+│       │   ├── confirm_dialog.py      Confirmation prompts
+│       │   ├── me2_migration_dialog.py  ME2 migration wizard
+│       │   ├── me3_setup_dialog.py    First-launch ME3 installer
+│       │   ├── mod_settings_dialog.py INI settings editor
+│       │   └── settings_dialog.py     App settings
+│       └── widgets/
+│           └── toggle_switch.py  Animated toggle switch widget
+├── resources/
+│   ├── dark_theme.qss           Qt stylesheet (dark theme)
+│   ├── covers/                  Steam cover art cache
+│   ├── headers/                 Steam header image cache
+│   ├── logos/                   Steam logo cache
+│   └── icons/                   App icons
+└── build/
+    ├── build.py                 PyInstaller build script
+    └── installer.iss            Inno Setup installer config
 ```
-FromSoftSeamlessCoOpManager/
-├── Setup_FromSoft_Coop_Manager.bat  ← One-time setup (double-click first)
-├── Uninstall_FromSoft_Coop_Manager.bat  ← Uninstaller (removes app + shortcuts)
-├── launch.vbs           ← Silent launcher (no console window)
-├── run.bat              ← Starts the app (called by launch.vbs)
-├── server.py            ← Flask backend (scanner, APIs, launcher)
-├── requirements.txt     ← Dependencies (flask, Pillow)
-├── config.json          ← Auto-generated after first scan
-├── FSSIcon.png          ← App icon source (PNG)
-├── FSSIcon.ico          ← App icon (auto-converted by installer)
-├── README.md            ← This file
-├── .venv/               ← Python virtual environment (auto-created)
-├── icons/               ← Cached game icons for desktop shortcuts
-├── templates/
-│   └── index.html       ← HTML template
-└── static/
-    ├── style.css        ← Dark-themed UI styling
-    └── app.js           ← Frontend logic (dashboard, tabs, forms)
-```
+
+---
+
+## Dependencies
+
+| Package                | Purpose                                            |
+| ---------------------- | -------------------------------------------------- |
+| `PySide6`              | Qt 6 UI framework                                  |
+| `requests`             | HTTP client for API calls                          |
+| `tomlkit` / `tomli-w`  | TOML reading/writing for ME3 profiles              |
+| `websocket-client`     | Nexus SSO WebSocket authentication                 |
+| `py7zr`                | 7z archive extraction                              |
+| `rarfile`              | RAR archive extraction (requires WinRAR or 7-Zip)  |
+| `pyinstaller`          | Build tooling (dev only)                           |
 
 ---
 
@@ -218,92 +276,45 @@ FromSoftSeamlessCoOpManager/
 
 ### Can I get banned for using this?
 
-**No.** The co-op mod prevents you from connecting to FromSoftware's matchmaking servers and uses save files different to the non-modded game. There is no way to get banned using this mod unless you modify it with the intent of connecting to vanilla players.
+**No.** The co-op mods prevent you from connecting to FromSoftware's
+matchmaking servers and use separate save files. There is no risk of
+bans from normal use.
 
-Because the mod introduces new items not found in the base game, it uses a different save file to the normal `.sl2` extension. This means you cannot access your Seamless Co-op save files in the base game, and vice versa. **Do not revert mod save files back to vanilla save files, as you will likely get banned.**
-
-> ⚠️ The **Co-op → Base Game** transfer in the Save Manager exists for convenience, but using it and then going online on official FromSoftware servers risks a ban. See the [Save Manager](#-save-manager-tab) section for the full warning.
-
-### "Python is not recognized" error
-
-The automatic Python installation may have failed, or PATH wasn't updated.
-
-**Fix:** Open a **new** Command Prompt and run `Setup_FromSoft_Coop_Manager.bat` again. If it still fails, install Python manually from [python.org/downloads](https://www.python.org/downloads/) and **check "Add python.exe to PATH"** during install.
+> Do **not** transfer co-op save files back to base game saves and
+> then play online — this risks a ban.
 
 ### The app didn't find my game
 
-Make sure:
-- The game is installed via **Steam** (the tool checks for Steam app manifests)
-- If you want Settings/Saves/Launch, the **co-op mod** must be installed in the game folder
-- Expected mod config locations:
-  - AC6: `<game>\Game\AC6Coop\ac6_coop_settings.ini`
-  - DS3: `<game>\Game\SeamlessCoop\ds3sc_settings.ini`
-  - Elden Ring: `<game>\Game\SeamlessCoop\ersc_settings.ini`
+- Make sure the game is installed via **Steam**
+- Click **Scan Games** to re-detect
+- The co-op mod does not need to be pre-installed — you can install
+  it from the Mods tab
 
-### I uninstalled a game but it still shows up
+### RAR mods fail to extract
 
-Click **Scan for Games** or just refresh the page. The app checks Steam's `appmanifest_<appid>.acf` file — if it's gone, the game is automatically removed from the dashboard.
+RAR extraction requires **WinRAR** or **7-Zip** to be installed on
+your system. The app checks these default paths:
 
-### How do I stop the app?
-
-The server runs in the background — there's no console window to close. To stop it:
-- **Easiest:** Just close your browser tab. The server uses minimal resources and will be cleaned up when you shut down or log off.
-- **Manual:** Open Task Manager (`Ctrl+Shift+Esc`), find `pythonw.exe` or `python.exe`, and end the task.
-
-### Can I move the folder?
-
-Yes. The app is installed to `%LOCALAPPDATA%\FromSoftCoopManager` by default. You can move this folder wherever you want, then run `Setup_FromSoft_Coop_Manager.bat` again to update the desktop shortcut.
-
-### Does this modify my game files?
-
-**No.** It only reads and writes the co-op mod's `.ini` settings file — the same file you could edit in Notepad. It never touches game executables or Steam files. Save file operations only affect save files in `%APPDATA%`.
-
-### My antivirus flagged it
-
-This sometimes happens with Python scripts and PowerShell shortcut creation. The app is fully open source — every line of code is readable. To fix:
-- Allow the app through your antivirus settings
-- Or right-click `run.bat` → Properties → check **Unblock** → OK
+- `C:\Program Files\WinRAR\UnRAR.exe`
+- `C:\Program Files\7-Zip\7z.exe`
+- `C:\Program Files (x86)\` variants
 
 ### Can I add support for another game?
 
-Yes. Add a new entry to the `GAME_DEFINITIONS` dictionary in `server.py`. Each entry defines the Steam folder name, config file path, launcher path, save directory, Nexus Mods URL, and default settings. See the existing AC6/DS3/ER entries for the format.
-
----
-
-## Uninstalling
-
-### Easy Uninstall (Recommended)
-
-Double-click **`Uninstall_FromSoft_Coop_Manager.bat`** in the app folder. It will:
-- Stop any running instances
-- Delete the app folder (`%LOCALAPPDATA%\FromSoftCoopManager`)
-- Remove all shortcuts (Desktop and OneDrive)
-- Clean up all app data
-
-### Manual Uninstall
-
-1. Delete the install folder: `%LOCALAPPDATA%\FromSoftCoopManager`
-2. Delete any desktop shortcuts:
-   - "FromSoft Seamless Co-op Manager"
-   - "[Game Name] Co-op" shortcuts (e.g., "Dark Souls III Co-op")
-
-> **Note:** Python (if installed) is not removed automatically. To remove it manually, go to **Settings → Apps → Python** and uninstall.
-
-That's it. Nothing else is installed system-wide. The virtual environment and all app data are inside the install folder.
+Add a new entry to `GAME_DEFINITIONS` in
+`app/config/game_definitions.py` and (if ME3-supported) add the game
+to `ME3_GAME_MAP` in `app/core/me3_service.py`.
 
 ---
 
 ## Technical Details
 
-| Component | Details |
-|-----------|---------|
-| **Backend** | Python 3 + Flask, runs on `127.0.0.1:5000` |
-| **Frontend** | Vanilla HTML/CSS/JS — no build tools, no npm, no frameworks |
-| **INI Parser** | Custom parser that reads mod comment metadata to infer control types (dropdowns, ranges, booleans) and extract default values |
-| **Game Scanner** | Enumerates all Windows drives → finds Steam's `libraryfolders.vdf` → resolves library paths → checks for known game folders → verifies `appmanifest_<id>.acf` |
-| **Icon Generation** | Downloads Steam CDN cover art → center-crops to square → converts to multi-size `.ico` via Pillow |
-| **Silent Launch** | `launch.vbs` runs `run.bat` with a hidden window via `WScript.Shell`; `run.bat` uses `pythonw` (windowless Python) when available |
-| **Shortcut Creation** | PowerShell `WScript.Shell` COM object with `[Environment]::GetFolderPath('Desktop')` for OneDrive compatibility |
-| **Save Detection** | Scans `%APPDATA%` for game save folders, matches numeric/hex Steam IDs |
-| **Dependencies** | Flask (web framework), Pillow (image processing) — both installed in `.venv` |
-| **No external services** | Everything runs locally. Steam CDN is only contacted for cover art images |
+| Component        | Details                                                    |
+| ---------------- | ---------------------------------------------------------- |
+| **UI Framework** | PySide6 (Qt 6) with Fusion base style                      |
+| **Mod Loader**   | Mod Engine 3 CLI (`me3 launch -g <game>`)                  |
+| **Nexus Auth**   | WebSocket SSO via `wss://sso.nexusmods.com`                |
+| **Packaging**    | PyInstaller (onedir) then Inno Setup installer             |
+| **Config**       | JSON config file (`config.json`)                           |
+| **Theme**        | Custom QSS dark theme (#0e0e18 bg, #e94560 accent)         |
+| **Archives**     | zip (builtin), 7z (py7zr), RAR (rarfile + WinRAR/7-Zip)    |

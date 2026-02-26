@@ -1,167 +1,213 @@
-# Contributing to FromSoft Seamless Co-op Manager
+# Contributing to FromSoft Mod Manager
 
-Thanks for your interest in contributing! This guide covers everything you need to get started.
+Thanks for your interest in contributing! This guide covers everything
+you need to get started.
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology | Notes |
-|-------|-----------|-------|
-| **Backend** | Python 3.8+ / Flask | Single file: `server.py` |
-| **Frontend** | Vanilla HTML, CSS, JS | No build tools, no frameworks, no npm |
-| **Image Processing** | Pillow | PNG→ICO conversion, Steam cover art cropping |
-| **Platform** | Windows only | Uses `%APPDATA%`, PowerShell shortcuts, Steam paths |
-
-There are **no build steps**. Edit a file, restart the server, refresh the browser.
+| Layer          | Technology                                          | Notes                                                          |
+|----------------|-----------------------------------------------------|----------------------------------------------------------------|
+| **UI**         | PySide6 (Qt 6)                                      | Native desktop widgets, dark QSS theme                         |
+| **Language**   | Python 3.10+                                        | Type hints used throughout                                     |
+| **Mod Loader** | [Mod Engine 3](https://github.com/garyttierney/me3) | CLI-based game launching with TOML profiles                    |
+| **Mod Source** | [Nexus Mods](https://www.nexusmods.com)             | SSO auth + REST API for downloads                              |
+| **Packaging**  | PyInstaller + Inno Setup                            | Single-directory bundle then Windows installer                 |
+| **Platform**   | Windows only                                        | Uses `%APPDATA%`, `%LOCALAPPDATA%`, Steam registry, PowerShell |
 
 ---
 
 ## Getting Set Up
 
 1. **Clone the repo**
-   ```
-   git clone <repo-url> FromSoftSeamlessCoOpManager
+
+   ```bash
+   git clone https://github.com/spikehockey75/FromSoftSeamlessCoOpManager.git
    cd FromSoftSeamlessCoOpManager
    ```
 
-2. **Run the installer**
-   ```
-   Setup_FromSoft_Coop_Manager.bat
-   ```
-   This creates a `.venv` virtual environment and installs Flask + Pillow.
+2. **Create a virtual environment and install dependencies**
 
-3. **Start the server**
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\pip install -r requirements.txt
    ```
-   run.bat
+
+3. **Run the app**
+
+   ```bash
+   .venv\Scripts\python main.py
    ```
-   The app opens at `http://127.0.0.1:5000`. When launched via the desktop shortcut or `launch.vbs`, the server runs in the background with no console window.
 
-   > **Tip for development:** Run `run.bat` directly from a terminal so you can see server output and stop it with `Ctrl+C`. The desktop shortcut uses `launch.vbs` which hides the console — not ideal for debugging.
-
-4. **Make changes** — edit files, then:
-   - **Python changes (`server.py`):** Stop the server (end `pythonw.exe`/`python.exe` in Task Manager, or `Ctrl+C` if running from a terminal) and re-run `run.bat`
-   - **JS/CSS/HTML changes:** Hard-refresh the browser (`Ctrl+Shift+R`)
+4. **Make changes** — edit files, then restart the app to see your changes.
 
 ---
 
 ## Project Structure
 
+```text
+main.py                          Entry point
+VERSION                          App version string
+requirements.txt                 Python dependencies
+app/
+├── config/
+│   ├── config_manager.py        Config wrapper (config.json)
+│   └── game_definitions.py      Game metadata, paths, and defaults
+├── core/
+│   ├── game_scanner.py          Steam library scanner
+│   ├── ini_parser.py            INI file parser with type inference
+│   ├── me2_migrator.py          ME2/ME3 profile import and migration
+│   ├── me3_service.py           ME3 CLI integration and profile management
+│   ├── mod_installer.py         Archive extraction and mod installation
+│   ├── mod_updater.py           Version comparison and update checking
+│   └── save_manager.py          Save file operations
+├── services/
+│   ├── nexus_service.py         Nexus Mods REST API client
+│   ├── nexus_sso.py             Nexus SSO WebSocket auth flow
+│   └── steam_service.py         Steam player count and asset APIs
+└── ui/
+    ├── main_window.py           Main window with sidebar + content split
+    ├── sidebar.py               Game list, player counts, Nexus widget
+    ├── game_page.py             Per-game tab container
+    ├── nexus_widget.py          Nexus auth widget (SSO + manual key)
+    ├── terminal_widget.py       Log output panel
+    ├── tabs/
+    │   ├── launch_tab.py        Game launcher with cover art and player count
+    │   ├── mods_tab.py          Mod cards, trending mods, install/update
+    │   ├── saves_tab.py         Save file management
+    │   └── settings_tab.py      ME3 profile viewer
+    ├── dialogs/
+    │   ├── add_mod_dialog.py         Add mod via Nexus URL or local archive
+    │   ├── confirm_dialog.py         Confirmation prompts
+    │   ├── me2_migration_dialog.py   ME2/ME3 import wizard
+    │   ├── me3_setup_dialog.py       First-launch ME3 installer
+    │   ├── mod_settings_dialog.py    INI settings editor
+    │   └── settings_dialog.py        App settings
+    └── widgets/
+        └── toggle_switch.py     Animated toggle switch widget
+resources/
+├── dark_theme.qss               Qt stylesheet (dark purple-navy theme)
+├── covers/                      Steam cover art cache
+├── headers/                     Steam header image cache
+├── logos/                       Steam logo cache
+└── icons/                       App icons
+build/
+├── build.py                     PyInstaller build script
+└── installer.iss                Inno Setup installer config
 ```
-server.py            ← All backend logic (Flask routes, scanner, INI parser)
-templates/index.html ← Single HTML template
-static/app.js        ← All frontend logic (dashboard, tabs, forms, API calls)
-static/style.css     ← All styling (dark theme)
-Setup_FromSoft_Coop_Manager.bat  ← One-time setup script
-launch.vbs           ← Silent launcher (runs run.bat with no console window)
-run.bat              ← App launcher (uses pythonw for background execution)
-requirements.txt     ← Python dependencies
-```
 
-### Key areas in `server.py`
+### Key areas
 
-- **`GAME_DEFINITIONS`** — Dictionary defining each supported game (Steam folder name, app ID, config paths, defaults, Nexus URL). This is where you add new games.
-- **`scan_for_games()`** — Discovers Steam libraries across all drives and checks for installed games.
-- **`/api/settings/<game_id>`** — Reads/writes the mod's `.ini` config file with a custom parser that extracts metadata from comments.
-- **`/api/saves/<game_id>`** — Save file listing, transfer, backup, restore, and delete operations.
-- **`/api/mod/<game_id>/install`** — Extracts mod zips into the correct game directory.
-- **`/api/shortcut/<game_id>`** — Downloads Steam cover art, converts to `.ico`, creates a Windows desktop shortcut.
-
-### Key areas in `static/app.js`
-
-- **`loadConfig()` / `buildGameHome()`** — Fetches game data from the API and renders the landing page card grid.
-- **`showGameDetail()`** — Builds the tabbed detail view (Launch, Settings, Saves, Mod Installer).
-- **`buildSettingsTab()`** — Dynamically generates form controls from INI metadata with dirty tracking and undo.
-- **`buildSavesTab()`** — Transfer cards, backup/restore UI, delete confirmations.
-- **`buildModTab()`** — Zip scanner, install flow, cleanup prompts.
+- **`app/config/game_definitions.py`** — Dictionary defining each
+  supported game (Steam folder, app ID, config paths, defaults, Nexus
+  info). This is where you add new games.
+- **`app/core/game_scanner.py`** — Discovers Steam libraries across
+  all drives via registry and drive probing.
+- **`app/core/me3_service.py`** — ME3 CLI wrapper: profile writing,
+  game launching, ME3 install/update. See also `ME3_GAME_MAP` for
+  game ID mappings.
+- **`app/core/me2_migrator.py`** — Imports mods from Mod Engine 2
+  configs, existing ME3 profiles, and game folder scans.
+- **`app/core/mod_installer.py`** — Archive extraction (zip/7z/rar),
+  INI backup/merge, mod installation workflow.
+- **`app/ui/tabs/mods_tab.py`** — Mod management UI: install, update,
+  enable/disable, trending mods, Nexus integration.
+- **`resources/dark_theme.qss`** — App-wide dark theme. Uses
+  `#0e0e18` background, `#e94560` accent.
 
 ---
 
 ## Adding a New Game
 
-To add support for another FromSoftware game with a Seamless Co-op mod:
+1. **Add a game definition** in
+   `app/config/game_definitions.py` → `GAME_DEFINITIONS`:
 
-1. **Add a game definition** in `server.py` → `GAME_DEFINITIONS`:
    ```python
-   "new_game_id": {
+   "new_id": {
        "name": "Game Title",
-       "steam_folder": "GameFolderName",       # Folder name inside steamapps/common/
-       "steam_app_id": "123456",               # Steam application ID
-       "config_relative": "Game\\ModFolder\\mod_settings.ini",
-       "launcher_relative": "Game\\ModFolder\\mod_launcher.exe",
-       "mod_marker_relative": "Game\\ModFolder",
-       "save_dir_name": "GameSaveFolder",      # Folder name inside %APPDATA%
-       "save_ext_base": ".sl2",                # Base game save extension
-       "save_ext_coop": ".co2",                # Co-op mod save extension
-       "nexus_url": "https://www.nexusmods.com/...",
-       "zip_patterns": ["ModName*.zip"],       # Glob patterns to find mod zips in Downloads
-       "defaults": {                           # Default INI settings
+       "steam_app_id": 123456,
+       "steam_folder": "GAME FOLDER NAME",
+       "config_relative": os.path.join(
+           "Game", "ModFolder", "mod_settings.ini"
+       ),
+       "mod_extract_relative": "Game",
+       "save_appdata_folder": "GameSaveFolder",
+       "save_prefix": "GS0000",
+       "base_ext": ".sl2",
+       "coop_ext": ".co2",
+       "mod_name": "Game Seamless Co-op",
+       "nexus_domain": "gamename",
+       "nexus_mod_id": 123,
+       "nexus_url": "https://www.nexusmods.com/gamename/mods/123",
+       "zip_pattern": r"game.*seamless.*co-?op.*\.zip$",
+       "launcher_relative": os.path.join(
+           "Game", "ModFolder", "mod_launcher.exe"
+       ),
+       "mod_marker_relative": os.path.join("Game", "ModFolder"),
+       "me3_game_name": "gamename",
+       "defaults": {
            "setting_name": "default_value",
-       }
+       },
    }
    ```
 
-2. **Test** by installing the game and its co-op mod, then clicking **Scan for Games** in the app.
+2. **Add ME3 mapping** in
+   `app/core/me3_service.py` → `ME3_GAME_MAP`:
 
-That's it — the frontend dynamically builds UI for any game in the definitions. No HTML or JS changes needed.
+   ```python
+   "new_id": "me3gamename",
+   ```
+
+3. **Test** by installing the game, then clicking **Scan Games** in
+   the sidebar. The UI builds dynamically from the definitions.
 
 ---
 
 ## Coding Conventions
 
-### Python (`server.py`)
+### Python
 
-- **No external dependencies** beyond Flask and Pillow — keep it lightweight
-- Use `os.path` for all file path operations (Windows compatibility)
-- All API endpoints return JSON with consistent shapes (`{"status": "ok", ...}` or `{"error": "message"}`)
-- Use `try/except` with meaningful error messages for file operations
-- Comments for non-obvious logic, especially INI parsing heuristics
+- **PySide6** for all UI — no web views, no HTML
+- Use `os.path` for file path operations (Windows compatibility)
+- Background work uses `threading.Thread` with
+  `queue.SimpleQueue` for thread-safe UI updates
+- Signals (`PySide6.QtCore.Signal`) for cross-widget communication
+- Lazy imports inside methods to keep startup fast
+- `try/except` with meaningful fallbacks for file operations
 
-### JavaScript (`static/app.js`)
+### UI / Theme
 
-- **Vanilla JS only** — no jQuery, no React, no TypeScript, no bundlers
-- Use `async/await` with `fetch()` for all API calls
-- DOM creation via `document.createElement()` — no innerHTML for dynamic content with user data
-- Functions are prefixed by their tab/feature area (`buildSettingsTab`, `buildSavesTab`, etc.)
-- Confirmation dialogs use the app's built-in modal, not `window.confirm()`
-
-### CSS (`static/style.css`)
-
-- Dark theme throughout — use existing CSS variables and color values for consistency
-- BEM-ish naming: `.game-home`, `.home-card`, `.btn-launch-sm`, `.btn-danger-sm`
-- Mobile responsiveness is not a priority (this is a desktop-only tool)
+- All styling via `resources/dark_theme.qss` and inline
+  `setStyleSheet()` calls
+- Dark theme: `#0e0e18` background, `#1a1a2e` cards,
+  `#e94560` accent, `#4ecca3` success
+- Object names like `btn_accent`, `btn_success`, `card`
+  for QSS targeting
+- No emojis in UI text unless specifically requested
 
 ### General
 
-- No build steps — the app must work by just running `run.bat`
-- No additional dependencies unless absolutely necessary (add to `requirements.txt` if needed)
-- Keep everything in as few files as possible — single `server.py`, single `app.js`, single `style.css`
 - Windows-only is fine — this targets Steam on Windows
+- No additional dependencies unless necessary (add to
+  `requirements.txt` if needed)
+- Keep logic in `app/core/` as pure Python, UI in `app/ui/`
 
 ---
 
-## Common Tasks
+## Building the Installer
 
-### Adding a new API endpoint
+### Step 1: Build with PyInstaller
 
-1. Add the Flask route in `server.py`
-2. Call it from `app.js` using `fetch()`
-3. Handle errors with try/catch and show user-friendly messages
+```bash
+.venv\Scripts\python build\build.py
+```
 
-### Adding a new tab to the game detail view
+### Step 2: Create installer with Inno Setup
 
-1. Add a tab button in the `showGameDetail()` function in `app.js`
-2. Create a `buildYourTab(gameId)` function that returns a DOM element
-3. Wire it up in the tab-switching logic
-
-### Modifying the INI parser
-
-The parser in `server.py` reads mod INI files and extracts:
-- Setting names and current values
-- Comments above each setting (used as descriptions)
-- Metadata from comments to determine control types (dropdowns, ranges, etc.)
-
-Be careful with changes here — each game's mod has slightly different comment formatting.
+1. Install [Inno Setup 6+](https://jrsoftware.org/isinfo.php)
+2. Open `build/installer.iss` and compile (F9)
+3. Output: `dist/FromSoftModManager_Setup_v*.exe`
 
 ---
 
@@ -169,16 +215,28 @@ Be careful with changes here — each game's mod has slightly different comment 
 
 There's no automated test suite currently. To test your changes:
 
-1. **Run the app** and verify the landing page loads with game cards
+1. **Run the app** and verify the sidebar loads with detected games
 2. **Test each tab** on at least one game:
-   - Settings: change a value, check dirty tracking, save, undo, reset defaults
-   - Saves: list files, make a backup, restore it, test transfers
-   - Mod Installer: verify zip detection, install, cleanup prompt
-   - Launch: verify the launcher starts
+   - **Mods:** install, update, enable/disable, add via Nexus URL
+   - **ME3 Profile:** verify profile viewer shows correct DLLs
+     and packages
+   - **Saves:** list files, backup, restore, transfer
+   - **Launch:** verify game starts via ME3
 3. **Test edge cases:**
-   - No games installed
-   - Game installed but mod not installed (only Mod Installer tab should show)
+   - No games installed (sidebar should show "Scan Games" prompt)
+   - Game installed but mod not installed (Mods tab should offer
+     install)
    - Multiple Steam libraries on different drives
+   - Fresh install (no `config.json`) — auto-detection should work
+
+---
+
+## Credits
+
+- **Seamless Co-op mods** by
+  [LukeYui](https://github.com/LukeYui)
+- **Mod Engine 3** by
+  [Gary Tierney](https://github.com/garyttierney/me3)
 
 ---
 
@@ -187,18 +245,5 @@ There's no automated test suite currently. To test your changes:
 1. Fork the repo and create a feature branch
 2. Make your changes following the conventions above
 3. Test manually on your own machine
-4. Open a pull request with a clear description of what changed and why
-
----
-
-## Ideas for Contribution
-
-Looking for something to work on? Here are some areas that could use help:
-
-- **New game support** — add definitions for other FromSoft co-op mods as they release
-- **Auto-update checking** — detect when a newer mod version is available on Nexus
-- **Backup scheduling** — automatic periodic save backups
-- **Import/export settings** — share INI configs between players
-- **UI improvements** — animations, transitions, better mobile layout (if anyone wants it)
-- **Error handling** — more graceful handling of edge cases (permission errors, locked files, etc.)
-- **Localization** — support for languages other than English
+4. Open a pull request with a clear description of what
+   changed and why
