@@ -10,8 +10,22 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton, QScrollArea, QFrame, QProgressBar,
                                 QFileDialog, QDialog, QSizePolicy, QInputDialog,
                                 QLineEdit)
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QSize
+from PySide6.QtGui import QIcon, QFont, QPixmap, QPainter, QColor
 from app.config.config_manager import ConfigManager
+
+_MDL2 = "Segoe MDL2 Assets"
+
+
+def _mdl2_icon(char: str, size: int = 16, color: str = "#c0c0d8") -> QIcon:
+    px = QPixmap(size, size)
+    px.fill(QColor("transparent"))
+    p = QPainter(px)
+    p.setFont(QFont(_MDL2, int(size * 0.75)))
+    p.setPen(QColor(color))
+    p.drawText(px.rect(), Qt.AlignCenter, char)
+    p.end()
+    return QIcon(px)
 from app.config.game_definitions import GAME_DEFINITIONS
 from app.core.mod_installer import install_mod_from_zip
 from app.core.me3_service import write_me3_profile, find_me3_executable, ME3_GAME_MAP, slugify
@@ -105,14 +119,62 @@ class _ModCard(QFrame):
         top.addWidget(self._ver_lbl)
         top.addStretch()
 
-        # Primary action button
-        self._primary_btn = QPushButton()
-        self._primary_btn.setFixedHeight(30)
-        self._primary_btn.setMinimumWidth(90)
-        self._primary_btn.clicked.connect(
-            lambda: self._pending.put(("action", self._mod["id"]))
+        # Manage button (cog wheel) — installed mods with INI settings
+        self._manage_btn = QPushButton()
+        self._manage_btn.setIcon(_mdl2_icon("\uE713", 16, "#c0c0d8"))
+        self._manage_btn.setIconSize(QSize(16, 16))
+        self._manage_btn.setFixedSize(30, 30)
+        self._manage_btn.setToolTip("Manage Settings")
+        self._manage_btn.setStyleSheet(
+            "QPushButton{background:#1e1e3a;"
+            "border:1px solid #3a3a5a;border-radius:6px;}"
+            "QPushButton:hover{background:#2a2a4a;border-color:#7b8cde;}"
         )
-        top.addWidget(self._primary_btn)
+        self._manage_btn.clicked.connect(
+            lambda: self._pending.put(("manage", self._mod["id"]))
+        )
+        top.addWidget(self._manage_btn)
+
+        # Uninstall button (delete icon) — installed mods without INI
+        self._uninstall_btn = QPushButton()
+        self._uninstall_btn.setIcon(_mdl2_icon("\uE74D", 16, "#e74c3c"))
+        self._uninstall_btn.setIconSize(QSize(16, 16))
+        self._uninstall_btn.setFixedSize(30, 30)
+        self._uninstall_btn.setToolTip("Uninstall")
+        self._uninstall_btn.setStyleSheet(
+            "QPushButton{background:transparent;"
+            "border:1px solid #e74c3c;border-radius:6px;}"
+            "QPushButton:hover{background:#e74c3c;}"
+        )
+        self._uninstall_btn.clicked.connect(
+            lambda: self._pending.put(("uninstall", self._mod["id"]))
+        )
+        top.addWidget(self._uninstall_btn)
+
+        # Update button (sync icon) — visible only when update available
+        self._update_btn = QPushButton()
+        self._update_btn.setIcon(_mdl2_icon("\uE72C", 16, "#ff9800"))
+        self._update_btn.setIconSize(QSize(16, 16))
+        self._update_btn.setFixedSize(30, 30)
+        self._update_btn.setStyleSheet(
+            "QPushButton{background:transparent;"
+            "border:1px solid #ff9800;border-radius:6px;}"
+            "QPushButton:hover{background:#ff9800;}"
+        )
+        self._update_btn.clicked.connect(
+            lambda: self._pending.put(("update", self._mod["id"]))
+        )
+        top.addWidget(self._update_btn)
+
+        # Install button (text) — virtual/uninstalled mods only
+        self._install_btn = QPushButton("Install")
+        self._install_btn.setFixedHeight(30)
+        self._install_btn.setMinimumWidth(90)
+        self._install_btn.setObjectName("btn_accent")
+        self._install_btn.clicked.connect(
+            lambda: self._pending.put(("install", self._mod["id"]))
+        )
+        top.addWidget(self._install_btn)
 
         # Activate / Deactivate toggle (ME3 games, installed mods only)
         self._toggle_sw = ToggleSwitch(checked=self._mod.get("enabled", True))
@@ -153,7 +215,7 @@ class _ModCard(QFrame):
         layout.addWidget(self._progress)
 
         # Initial button state
-        self._refresh_primary_btn()
+        self._refresh_buttons()
         self._refresh_toggle_btn()
 
         # Show checking status if installed and has nexus info
@@ -163,31 +225,23 @@ class _ModCard(QFrame):
     # ------------------------------------------------------------------
     # Button state helpers
     # ------------------------------------------------------------------
-    def _refresh_primary_btn(self):
+    def _refresh_buttons(self):
         if self._virtual:
-            self._primary_btn.setText("Install")
-            self._primary_btn.setObjectName("btn_accent")
-        elif self._has_update:
-            self._primary_btn.setText(f"Update → v{self._latest_version}" if self._latest_version else "Update")
-            self._primary_btn.setStyleSheet(
-                "QPushButton{color:#ff9800;border:1px solid #ff9800;border-radius:4px;"
-                "padding:2px 8px;background:transparent;}"
-                "QPushButton:hover{background:#ff9800;color:#fff;}"
-            )
-        elif self._has_ini():
-            self._primary_btn.setText("Manage")
-            self._primary_btn.setObjectName("")
-            self._primary_btn.setStyleSheet("")
+            self._install_btn.setVisible(True)
+            self._manage_btn.setVisible(False)
+            self._uninstall_btn.setVisible(False)
+            self._update_btn.setVisible(False)
         else:
-            self._primary_btn.setText("Uninstall")
-            self._primary_btn.setStyleSheet(
-                "QPushButton{color:#e74c3c;border:1px solid #e74c3c;border-radius:4px;"
-                "padding:2px 8px;background:transparent;}"
-                "QPushButton:hover{background:#e74c3c;color:#fff;}"
-            )
-        # Force style re-evaluation
-        self._primary_btn.style().unpolish(self._primary_btn)
-        self._primary_btn.style().polish(self._primary_btn)
+            self._install_btn.setVisible(False)
+            has_ini = self._has_ini()
+            self._manage_btn.setVisible(has_ini)
+            self._uninstall_btn.setVisible(not has_ini)
+            if self._has_update:
+                tip = f"Update to v{self._latest_version}" if self._latest_version else "Update"
+                self._update_btn.setToolTip(tip)
+                self._update_btn.setVisible(True)
+            else:
+                self._update_btn.setVisible(False)
 
     def _refresh_toggle_btn(self):
         show = self._is_me3_game and not self._virtual
@@ -272,7 +326,7 @@ class _ModCard(QFrame):
         has_update = result.get("has_update", False)
         self._has_update = has_update
         self._latest_version = latest
-        self._refresh_primary_btn()
+        self._refresh_buttons()
         if has_update:
             self._status_lbl.setText(f"🔔 Update available: v{latest}")
             self._status_lbl.setStyleSheet("font-size:11px;color:#ff9800;font-weight:600;")
@@ -287,7 +341,11 @@ class _ModCard(QFrame):
             if msg:
                 self._status_lbl.setText(msg)
                 self._status_lbl.setStyleSheet("font-size:11px;color:#8888aa;")
-        self._primary_btn.setEnabled(not visible)
+        enabled = not visible
+        self._install_btn.setEnabled(enabled)
+        self._manage_btn.setEnabled(enabled)
+        self._uninstall_btn.setEnabled(enabled)
+        self._update_btn.setEnabled(enabled)
 
     def on_install_done(self, result: dict, new_version: str = ""):
         self.set_installing(False)
@@ -298,7 +356,7 @@ class _ModCard(QFrame):
                 self._mod["version"] = ver
                 self._ver_lbl.setText(f"v{ver}")
             self._has_update = False
-            self._refresh_primary_btn()
+            self._refresh_buttons()
             self._refresh_toggle_btn()
             self._status_lbl.setText("✓ Installed successfully")
             self._status_lbl.setStyleSheet("font-size:11px;color:#4ecca3;")
@@ -413,6 +471,18 @@ class ModsTab(QWidget):
                 tag = item[0]
                 if tag == "action":
                     self._route_action(item[1])
+                elif tag == "manage":
+                    ini = self._get_mod_ini_path(item[1])
+                    if ini:
+                        self._do_manage(item[1])
+                elif tag == "update":
+                    if self._ensure_me3_available():
+                        self._do_update(item[1])
+                elif tag == "uninstall":
+                    self._do_uninstall(item[1])
+                elif tag == "install":
+                    if self._ensure_me3_available():
+                        self._do_install(item[1])
                 elif tag == "toggle":
                     _, mod_id, enabled = item
                     self._config.set_mod_enabled(self._game_id, mod_id, enabled)
@@ -998,10 +1068,29 @@ class ModsTab(QWidget):
         if nexus_url:
             webbrowser.open(nexus_url)
         self.log_message.emit(
-            "Nexus Premium required for direct downloads. "
-            "Opening mod page — download the file, then select it.",
+            "Free Nexus account — opening mod page in your browser.",
             "warning"
         )
+        from PySide6.QtWidgets import QMessageBox
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Information)
+        msg.setWindowTitle("Download Mod Manually")
+        msg.setText(
+            f"<b>Download \"{mod.get('name', mod_id)}\" from Nexus Mods</b>"
+        )
+        msg.setInformativeText(
+            "The mod page has been opened in your browser.\n\n"
+            "1. Click the FILES tab on the Nexus page\n"
+            "2. Click \"Manual Download\" on the file you want\n"
+            "3. Wait for the download to finish\n"
+            "4. Click OK below, then browse to the downloaded\n"
+            "   .zip / .7z / .rar file (usually in your Downloads folder)\n\n"
+            "Tip: Nexus Premium members get one-click installs\n"
+            "directly from the app."
+        )
+        msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        if msg.exec() != QMessageBox.Ok:
+            return
         downloads = os.path.join(os.path.expanduser("~"), "Downloads")
         path, _ = QFileDialog.getOpenFileName(
             self, f"Select downloaded archive for {mod.get('name', mod_id)}", downloads,

@@ -4,7 +4,7 @@
 
 #define AppName "FromSoft Mod Manager"
 #ifndef AppVersion
-  #define AppVersion Trim(StringChange(StringChange(FileRead(AddBackslash(SourcePath) + "..\VERSION"), Chr(13), ""), Chr(10), ""))
+  #include "_version.iss"
 #endif
 #define AppPublisher "FromSoftModManager"
 #define AppURL "https://github.com/spikehockey75/FromSoftModManager"
@@ -50,6 +50,28 @@ Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+// Detect existing install and show upgrade prompt
+function InitializeSetup(): Boolean;
+var
+  PrevVersion: AnsiString;
+  VersionFile: String;
+begin
+  Result := True;
+  VersionFile := ExpandConstant('{localappdata}\FromSoftModManager\VERSION');
+  if FileExists(VersionFile) then
+  begin
+    LoadStringFromFile(VersionFile, PrevVersion);
+    PrevVersion := Trim(PrevVersion);
+    if PrevVersion <> '' then
+    begin
+      Result := (MsgBox(
+        '{#AppName} v' + PrevVersion + ' is already installed.' + #13#10 +
+        'Update to v{#AppVersion}?',
+        mbConfirmation, MB_YESNO) = IDYES);
+    end;
+  end;
+end;
+
 // Download and install ME3 if not already present
 procedure DownloadME3();
 var
@@ -72,5 +94,25 @@ begin
   if CurStep = ssPostInstall then
   begin
     DownloadME3();
+  end;
+end;
+
+// Prompt to remove user data (config, mods) on uninstall
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  AppDir: String;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    AppDir := ExpandConstant('{app}');
+    if DirExists(AppDir) then
+    begin
+      if MsgBox('Delete your settings and downloaded mods?' + #13#10 +
+                'This will remove everything in:' + #13#10 +
+                AppDir, mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      begin
+        DelTree(AppDir, True, True, True);
+      end;
+    end;
   end;
 end;
