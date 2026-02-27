@@ -74,3 +74,23 @@ begin
     DownloadME3();
   end;
 end;
+
+// Prompt to remove user data (config, mods) on uninstall
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  AppDir: String;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    AppDir := ExpandConstant('{app}');
+    if DirExists(AppDir) then
+    begin
+      if MsgBox('Delete your settings and downloaded mods?' + #13#10 +
+                'This will remove everything in:' + #13#10 +
+                AppDir, mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      begin
+        DelTree(AppDir, True, True, True);
+      end;
+    end;
+  end;
+end;
