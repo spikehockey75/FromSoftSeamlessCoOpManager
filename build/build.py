@@ -78,7 +78,7 @@ if result.returncode == 0:
     # Copy VERSION to dist root so the installer and future upgrades can read it
     dist_version = os.path.join(DIST_DIR, APP_NAME, "VERSION")
     shutil.copy2(version_file, dist_version)
-    print(f"[COPY] VERSION → {dist_version}")
+    print(f"[COPY] VERSION -> {dist_version}")
 
     exe_path = os.path.join(DIST_DIR, APP_NAME, f"{APP_NAME}.exe")
     if os.path.isfile(exe_path):
