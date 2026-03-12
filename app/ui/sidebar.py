@@ -221,9 +221,22 @@ class Sidebar(QWidget):
 
         self._me3_lbl = QLabel("ME3: checking…")
         self._me3_lbl.setStyleSheet(
-            "font-size:10px;color:#3a3a5a;padding:0px 14px 6px 14px;"
+            "font-size:10px;color:#3a3a5a;padding:0px 14px 2px 14px;"
         )
         layout.addWidget(self._me3_lbl)
+
+        # ME3 update button (hidden until update detected)
+        self._me3_update_btn = QPushButton("\uE895  Update Available")
+        self._me3_update_btn.setFont(QFont(_MDL2, 9))
+        self._me3_update_btn.setStyleSheet(
+            "QPushButton{font-family:'Segoe UI','Segoe MDL2 Assets';font-size:10px;"
+            "color:#e94560;background:rgba(233,69,96,0.08);border:1px solid rgba(233,69,96,0.25);"
+            "border-radius:4px;padding:3px 8px;margin:0px 14px 6px 14px;text-align:left;}"
+            "QPushButton:hover{background:rgba(233,69,96,0.18);color:#ff6b8a;}"
+        )
+        self._me3_update_btn.setCursor(Qt.PointingHandCursor)
+        self._me3_update_btn.setVisible(False)
+        layout.addWidget(self._me3_update_btn)
 
     def populate_games(self, games: dict):
         """Rebuild the game button list."""
@@ -319,9 +332,18 @@ class Sidebar(QWidget):
         pending = self._pending
 
         def _work():
-            from app.core.me3_service import get_me3_version
+            from app.core.me3_service import get_me3_version, get_latest_me3_release
             ver = get_me3_version(config.get_me3_path())
             pending.put(("me3_ver", ver))
+            # Check for ME3 updates
+            if ver:
+                latest = get_latest_me3_release()
+                if latest and not latest.get("error") and latest.get("version"):
+                    pending.put(("me3_update", ver, latest["version"]))
+            # Check for app updates
+            from app.services.update_service import check_for_update
+            app_result = check_for_update()
+            pending.put(("app_update", app_result))
 
         threading.Thread(target=_work, daemon=True).start()
 
@@ -330,17 +352,22 @@ class Sidebar(QWidget):
             while True:
                 item = self._pending.get_nowait()
                 if item[0] == "me3_ver":
+                    import re as _re_mod
                     ver = item[1]
                     if ver:
-                        self._me3_lbl.setText(f"ME3: {ver}")
+                        display = _re_mod.sub(r'^me3\s+', '', ver)
+                        self._me3_lbl.setText(f"ME3: {display}")
                         self._me3_lbl.setStyleSheet(
-                            "font-size:10px;color:#3a3a5a;padding:0px 14px 6px 14px;"
+                            "font-size:10px;color:#3a3a5a;padding:0px 14px 2px 14px;"
                         )
                     else:
                         self._me3_lbl.setText("ME3: not found")
                         self._me3_lbl.setStyleSheet(
-                            "font-size:10px;color:#e74c3c;padding:0px 14px 6px 14px;"
+                            "font-size:10px;color:#e74c3c;padding:0px 14px 2px 14px;"
                         )
+                elif item[0] == "me3_update":
+                    installed_ver, latest_ver = item[1], item[2]
+                    self._check_me3_update(installed_ver, latest_ver)
                 elif item[0] == "logo_ready":
                     game_id, path = item[1], item[2]
                     if game_id in self._game_buttons:
@@ -351,8 +378,66 @@ class Sidebar(QWidget):
                         self._game_buttons[game_id].set_player_count(count)
                 elif item[0] == "fetch_counts_done":
                     self._fetching_counts = False
+                elif item[0] == "app_update":
+                    result = item[1]
+                    if not result.get("has_update"):
+                        self._version_lbl.setStyleSheet(
+                            "font-size:10px;color:#4ecca3;padding:6px 14px 2px 14px;"
+                        )
         except _queue.Empty:
             pass
+
+    def _check_me3_update(self, installed_ver: str, latest_ver: str):
+        """Compare installed and latest ME3 versions, prompt update if newer."""
+        import re
+        def _norm(v: str) -> str:
+            # Strip prefixes like "me3 " or "v"
+            v = re.sub(r'^(me3\s+|[vV])', '', v.strip())
+            return v
+
+        inst = _norm(installed_ver)
+        latest = _norm(latest_ver)
+        if inst == latest:
+            self._me3_lbl.setStyleSheet(
+                "font-size:10px;color:#4ecca3;padding:0px 14px 2px 14px;"
+            )
+            return
+
+        # Simple version comparison via tuple
+        try:
+            inst_parts = tuple(int(x) for x in inst.split("."))
+            latest_parts = tuple(int(x) for x in latest.split("."))
+            if inst_parts >= latest_parts:
+                self._me3_lbl.setStyleSheet(
+                    "font-size:10px;color:#4ecca3;padding:0px 14px 2px 14px;"
+                )
+                return
+        except ValueError:
+            # Non-numeric version, fall back to string comparison
+            if inst >= latest:
+                return
+
+        self._me3_lbl.setText(f"ME3: {inst}")
+        self._me3_lbl.setStyleSheet(
+            "font-size:10px;color:#3a3a5a;padding:0px 14px 2px 14px;"
+        )
+        self._me3_update_btn.setText(f"Update to {latest_ver}")
+        self._me3_update_btn.setVisible(True)
+        self._me3_update_btn.clicked.connect(lambda: self._prompt_me3_update(latest_ver))
+
+    def _prompt_me3_update(self, latest_ver: str):
+        from app.ui.dialogs.me3_update_dialog import ME3UpdateDialog
+        dlg = ME3UpdateDialog(self._config, latest_ver, parent=self.window())
+        if dlg.exec():
+            from app.core.me3_service import get_me3_version
+            import re
+            ver = get_me3_version(self._config.get_me3_path())
+            display = re.sub(r'^me3\s+', '', ver) if ver else "updated"
+            self._me3_lbl.setText(f"ME3: {display}")
+            self._me3_lbl.setStyleSheet(
+                "font-size:10px;color:#4ecca3;padding:0px 14px 2px 14px;"
+            )
+            self._me3_update_btn.setVisible(False)
 
     @property
     def nexus_widget(self):

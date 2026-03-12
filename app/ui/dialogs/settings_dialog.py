@@ -1,4 +1,4 @@
-"""App-level settings dialog — Nexus API key, ME3 path, preferences."""
+"""App-level settings dialog — Nexus account, ME3 path, preferences."""
 
 import os
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
@@ -11,6 +11,7 @@ from app.config.config_manager import ConfigManager, _DEFAULT_MODS_DIR
 class SettingsDialog(QDialog):
     settings_saved = Signal()
     _update_checked = Signal(object)  # internal: update check result from bg thread
+    _me3_update_checked = Signal(object)  # internal: ME3 update check result
 
     def __init__(self, config: ConfigManager, parent=None):
         super().__init__(parent)
@@ -35,25 +36,9 @@ class SettingsDialog(QDialog):
         nexus_layout = QFormLayout(nexus_group)
         nexus_layout.setSpacing(10)
 
-        self._nexus_key = QLineEdit()
-        self._nexus_key.setPlaceholderText("Paste your Nexus API key here")
-        self._nexus_key.setEchoMode(QLineEdit.Password)
-        show_btn = QPushButton("Show")
-        show_btn.setFixedWidth(60)
-        show_btn.setCheckable(True)
-        show_btn.toggled.connect(lambda on: self._nexus_key.setEchoMode(
-            QLineEdit.Normal if on else QLineEdit.Password
-        ))
-        key_row = QHBoxLayout()
-        key_row.addWidget(self._nexus_key)
-        key_row.addWidget(show_btn)
-        nexus_layout.addRow("API Key:", key_row)
-
-        nexus_help = QLabel('<a href="https://www.nexusmods.com/users/myaccount?tab=api+access" '
-                           'style="color:#e94560;">Get your API key from Nexus</a>')
-        nexus_help.setOpenExternalLinks(True)
-        nexus_help.setStyleSheet("font-size:11px;")
-        nexus_layout.addRow("", nexus_help)
+        self._nexus_status_lbl = QLabel("Not connected")
+        self._nexus_status_lbl.setStyleSheet("font-size:12px;color:#8888aa;")
+        nexus_layout.addRow("Status:", self._nexus_status_lbl)
 
         self._signout_btn = QPushButton("Sign Out")
         self._signout_btn.setFixedWidth(80)
@@ -94,6 +79,26 @@ class SettingsDialog(QDialog):
         me3_import_btn.setObjectName("btn_blue")
         me3_import_btn.clicked.connect(self._import_me3_profiles)
         me3_layout.addRow("", me3_import_btn)
+
+        # ME3 version + update check
+        me3_ver_row = QHBoxLayout()
+        self._me3_ver_lbl = QLabel("")
+        self._me3_ver_lbl.setStyleSheet("font-size:12px;color:#e0e0ec;font-weight:600;")
+        me3_ver_row.addWidget(self._me3_ver_lbl)
+        me3_ver_row.addStretch()
+        me3_layout.addRow("Version:", me3_ver_row)
+
+        me3_check_row = QHBoxLayout()
+        self._me3_check_btn = QPushButton("Check for ME3 Updates")
+        self._me3_check_btn.setObjectName("btn_blue")
+        self._me3_check_btn.setFixedWidth(180)
+        self._me3_check_btn.clicked.connect(self._check_me3_updates)
+        me3_check_row.addWidget(self._me3_check_btn)
+        self._me3_update_lbl = QLabel("")
+        self._me3_update_lbl.setStyleSheet("font-size:11px;color:#8888aa;")
+        me3_check_row.addWidget(self._me3_update_lbl)
+        me3_check_row.addStretch()
+        me3_layout.addRow("", me3_check_row)
 
         layout.addWidget(me3_group)
 
@@ -152,11 +157,21 @@ class SettingsDialog(QDialog):
         layout.addWidget(btn_box)
 
     def _load(self):
-        key = self._config.get_nexus_api_key()
-        self._nexus_key.setText(key)
-        self._signout_btn.setVisible(bool(key))
+        token = self._config.get_nexus_access_token()
+        user = self._config.get_nexus_user_info()
+        if token and user:
+            name = user.get("name", "Connected")
+            self._nexus_status_lbl.setText(f"Connected as {name}")
+            self._nexus_status_lbl.setStyleSheet("font-size:12px;color:#4ecca3;")
+        else:
+            self._nexus_status_lbl.setText("Not connected")
+            self._nexus_status_lbl.setStyleSheet("font-size:12px;color:#8888aa;")
+        self._signout_btn.setVisible(bool(token))
         self._me3_path.setText(self._config.get_me3_path())
         self._use_me3.setChecked(self._config.get_use_me3())
+        from app.core.me3_service import get_me3_version
+        me3_ver = get_me3_version(self._config.get_me3_path())
+        self._me3_ver_lbl.setText(me3_ver or "Not found")
         self._mods_dir.setText(self._config.get_mods_dir())
 
     def _browse_me3(self):
@@ -249,6 +264,92 @@ class SettingsDialog(QDialog):
             self._update_status_lbl.setText("Up to date")
             self._update_status_lbl.setStyleSheet("font-size:11px;color:#4a6a2a;font-weight:600;")
 
+    def _check_me3_updates(self):
+        self._me3_check_btn.setEnabled(False)
+        self._me3_update_lbl.setText("Checking...")
+        self._me3_update_lbl.setStyleSheet("font-size:11px;color:#8888aa;")
+        self._me3_update_checked.connect(self._on_me3_update_done)
+
+        import threading
+
+        def _work():
+            from app.core.me3_service import get_me3_version, get_latest_me3_release
+            installed = get_me3_version(self._config.get_me3_path())
+            latest = get_latest_me3_release()
+            self._me3_update_checked.emit({
+                "installed": installed,
+                "latest": latest,
+            })
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _on_me3_update_done(self, result):
+        import re
+        self._me3_check_btn.setEnabled(True)
+        self._me3_update_checked.disconnect(self._on_me3_update_done)
+
+        installed = result.get("installed")
+        latest_info = result.get("latest")
+
+        if not installed:
+            self._me3_update_lbl.setText("ME3 not installed")
+            self._me3_update_lbl.setStyleSheet("font-size:11px;color:#e74c3c;")
+            return
+
+        if not latest_info or latest_info.get("error"):
+            err = latest_info.get("error", "Unknown error") if latest_info else "Network error"
+            self._me3_update_lbl.setText(f"Check failed: {err}")
+            self._me3_update_lbl.setStyleSheet("font-size:11px;color:#e74c3c;")
+            return
+
+        latest_ver = latest_info.get("version", "")
+
+        def _norm(v):
+            return re.sub(r'^(me3\s+|[vV])', '', v.strip())
+
+        inst_n = _norm(installed)
+        latest_n = _norm(latest_ver)
+
+        if inst_n == latest_n:
+            self._me3_update_lbl.setText("Up to date")
+            self._me3_update_lbl.setStyleSheet("font-size:11px;color:#4ecca3;font-weight:600;")
+            return
+
+        try:
+            inst_parts = tuple(int(x) for x in inst_n.split("."))
+            latest_parts = tuple(int(x) for x in latest_n.split("."))
+            if inst_parts >= latest_parts:
+                self._me3_update_lbl.setText("Up to date")
+                self._me3_update_lbl.setStyleSheet("font-size:11px;color:#4ecca3;font-weight:600;")
+                return
+        except ValueError:
+            pass
+
+        self._me3_update_lbl.setText(f"Update available: {latest_ver}")
+        self._me3_update_lbl.setStyleSheet("font-size:11px;color:#e94560;font-weight:600;")
+
+        # Replace check button with update button
+        self._me3_check_btn.setText("Update ME3")
+        self._me3_check_btn.setObjectName("btn_accent")
+        self._me3_check_btn.setStyle(self._me3_check_btn.style())  # force style refresh
+        self._me3_check_btn.clicked.disconnect()
+        self._me3_check_btn.clicked.connect(lambda: self._run_me3_update(latest_ver))
+
+    def _run_me3_update(self, latest_ver: str):
+        from app.ui.dialogs.me3_update_dialog import ME3UpdateDialog
+        dlg = ME3UpdateDialog(self._config, latest_ver, parent=self)
+        if dlg.exec():
+            from app.core.me3_service import get_me3_version
+            ver = get_me3_version(self._config.get_me3_path())
+            self._me3_ver_lbl.setText(ver or "Not found")
+            self._me3_update_lbl.setText("Updated successfully!")
+            self._me3_update_lbl.setStyleSheet("font-size:11px;color:#4ecca3;font-weight:600;")
+            self._me3_check_btn.setText("Check for ME3 Updates")
+            self._me3_check_btn.setObjectName("btn_blue")
+            self._me3_check_btn.setStyle(self._me3_check_btn.style())
+            self._me3_check_btn.clicked.disconnect()
+            self._me3_check_btn.clicked.connect(self._check_me3_updates)
+
     def _browse_mods_dir(self):
         path = QFileDialog.getExistingDirectory(
             self, "Select Mod Storage Directory", self._mods_dir.text() or ""
@@ -261,14 +362,12 @@ class SettingsDialog(QDialog):
 
     def _sign_out(self):
         self._config.clear_nexus_auth()
-        self._nexus_key.clear()
+        self._nexus_status_lbl.setText("Not connected")
+        self._nexus_status_lbl.setStyleSheet("font-size:12px;color:#8888aa;")
         self._signout_btn.setVisible(False)
         self.settings_saved.emit()
 
     def _save(self):
-        key = self._nexus_key.text().strip()
-        if key:
-            self._config.set_nexus_api_key(key)
         self._config.set_me3_path(self._me3_path.text().strip())
         self._config.set_use_me3(self._use_me3.isChecked())
         mods_dir = self._mods_dir.text().strip()
