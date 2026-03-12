@@ -21,7 +21,7 @@ import urllib.error
 # ── Nexus OAuth endpoints ────────────────────────────────────────
 NEXUS_AUTH_URL = "https://users.nexusmods.com/oauth/authorize"
 NEXUS_TOKEN_URL = "https://users.nexusmods.com/oauth/token"
-CLIENT_ID = "nexus_oauth_client"  # TODO: replace with registered Client ID
+CLIENT_ID = "fromsoft_mod_manager"
 REDIRECT_URI = "http://127.0.0.1:9876/callback"
 REDIRECT_PORT = 9876
 
