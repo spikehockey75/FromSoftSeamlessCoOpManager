@@ -144,6 +144,8 @@ class NexusWidget(QWidget):
     def __init__(self, config: ConfigManager, parent=None):
         super().__init__(parent)
         self._config = config
+        self._thread = None
+        self._worker = None
         self._build()
         self._refresh()
         # Try to refresh token in background to catch revoked tokens
@@ -287,8 +289,23 @@ class NexusWidget(QWidget):
             p.end()
             self._avatar_lbl.setPixmap(circle)
 
+    def _start_bg_work(self, worker, on_finished):
+        """Safely start a background QThread, cleaning up any previous one."""
+        if self._thread is not None:
+            self._thread.quit()
+            self._thread.wait()
+        self._thread = QThread()
+        self._worker = worker
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.finished.connect(on_finished)
+        self._worker.finished.connect(self._thread.quit)
+        self._thread.start()
+
     def _revalidate_token(self):
         """Background check that the stored token is still valid."""
+        if self._thread is not None and self._thread.isRunning():
+            return
         tokens = self._config.get_nexus_tokens()
         refresh_token = tokens.get("refresh_token", "")
         if not refresh_token:
@@ -296,22 +313,16 @@ class NexusWidget(QWidget):
         # If token is not expired, just validate via API
         if not self._config.is_nexus_token_expired():
             token = tokens.get("access_token", "")
-            self._thread = QThread()
-            self._worker = _ValidateWorker(token, self._config)
-            self._worker.moveToThread(self._thread)
-            self._thread.started.connect(self._worker.run)
-            self._worker.finished.connect(self._on_revalidated)
-            self._worker.finished.connect(self._thread.quit)
-            self._thread.start()
+            self._start_bg_work(
+                _ValidateWorker(token, self._config),
+                self._on_revalidated,
+            )
         else:
             # Token expired — try refresh
-            self._thread = QThread()
-            self._worker = _RefreshWorker(refresh_token)
-            self._worker.moveToThread(self._thread)
-            self._thread.started.connect(self._worker.run)
-            self._worker.finished.connect(self._on_token_refreshed)
-            self._worker.finished.connect(self._thread.quit)
-            self._thread.start()
+            self._start_bg_work(
+                _RefreshWorker(refresh_token),
+                self._on_token_refreshed,
+            )
 
     def _on_token_refreshed(self, result: dict):
         if "error" in result:
@@ -334,26 +345,23 @@ class NexusWidget(QWidget):
             tokens = self._config.get_nexus_tokens()
             refresh_token = tokens.get("refresh_token", "")
             if refresh_token:
-                self._thread = QThread()
-                self._worker = _RefreshWorker(refresh_token)
-                self._worker.moveToThread(self._thread)
-                self._thread.started.connect(self._worker.run)
-                self._worker.finished.connect(self._on_token_refreshed)
-                self._worker.finished.connect(self._thread.quit)
-                self._thread.start()
+                QTimer.singleShot(0, lambda: self._start_bg_work(
+                    _RefreshWorker(refresh_token),
+                    self._on_token_refreshed,
+                ))
             else:
                 print("[NEXUS] Stored token is invalid, clearing auth", flush=True)
                 self._config.clear_nexus_auth()
                 self._refresh()
                 self.auth_changed.emit("")
         else:
-            # Update cached user info in case it changed
-            self._config.set_nexus_user_info({
-                "name": result.get("name", ""),
-                "is_premium": result.get("is_premium", False),
-                "is_supporter": result.get("is_supporter", False),
-                "profile_url": result.get("profile_url", ""),
-            })
+            # Update cached user info — merge avatar from GraphQL with JWT data
+            existing = self._config.get_nexus_user_info() or {}
+            avatar_url = result.get("avatar", "") or result.get("profile_url", "")
+            existing["profile_url"] = avatar_url
+            if result.get("name"):
+                existing["name"] = result["name"]
+            self._config.set_nexus_user_info(existing)
             self._refresh()
 
     def prompt_login(self):
@@ -374,6 +382,8 @@ class NexusWidget(QWidget):
             self._config.set_nexus_user_info(user_info)
         self._refresh()
         self.auth_changed.emit(tokens.get("access_token", ""))
+        # Fetch full profile (including avatar) from the Nexus API
+        QTimer.singleShot(200, self._revalidate_token)
 
     def _on_logout(self):
         self._config.clear_nexus_auth()
@@ -391,6 +401,31 @@ class _ValidateWorker(QObject):
         self._config = config
 
     def run(self):
-        svc = NexusService(self._token, config=self._config)
-        result = svc.validate_user()
-        self.finished.emit(result)
+        import json
+        import urllib.request
+        import urllib.error
+        # Use Nexus v2 GraphQL API (supports OAuth Bearer tokens)
+        try:
+            # Get user ID from JWT to query their profile
+            from app.services.nexus_oauth import decode_jwt_payload
+            jwt_user = decode_jwt_payload(self._token).get("user", {})
+            user_id = jwt_user.get("id", 0)
+            query = json.dumps({"query": f'{{ user(id: {user_id}) {{ avatar, name, memberId }} }}'})
+            req = urllib.request.Request(
+                "https://api.nexusmods.com/v2/graphql",
+                data=query.encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {self._token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "FromSoftModManager/2.1.0",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                result = json.loads(resp.read().decode())
+                user_data = result.get("data", {}).get("user", {})
+                self.finished.emit(user_data if user_data else {"error": "No user data"})
+                return
+        except Exception:
+            pass
+        self.finished.emit({"error": "Could not fetch user info"})

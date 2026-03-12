@@ -9,6 +9,7 @@ import base64
 import hashlib
 import json
 import os
+import sys
 import threading
 import time
 import uuid
@@ -17,6 +18,21 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlencode, urlparse, parse_qs
 import urllib.request
 import urllib.error
+
+
+def _read_version() -> str:
+    if getattr(sys, 'frozen', False):
+        base = sys._MEIPASS
+    else:
+        base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    try:
+        with open(os.path.join(base, "VERSION"), "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return "2.0.0"
+
+
+USER_AGENT = f"FromSoftModManager/{_read_version()}"
 
 # ── Nexus OAuth endpoints ────────────────────────────────────────
 NEXUS_AUTH_URL = "https://users.nexusmods.com/oauth/authorize"
@@ -107,7 +123,10 @@ def exchange_code_for_tokens(code: str, code_verifier: str) -> dict:
     req = urllib.request.Request(
         NEXUS_TOKEN_URL,
         data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": USER_AGENT,
+        },
         method="POST",
     )
     try:
@@ -141,7 +160,10 @@ def refresh_access_token(refresh_token: str) -> dict:
     req = urllib.request.Request(
         NEXUS_TOKEN_URL,
         data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": USER_AGENT,
+        },
         method="POST",
     )
     try:
