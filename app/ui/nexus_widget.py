@@ -1,5 +1,6 @@
 """Nexus Mods authentication widget — shows login button or user info."""
 
+import time
 import threading
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel,
                                 QPushButton, QDialog, QDialogButtonBox)
@@ -151,6 +152,11 @@ class NexusWidget(QWidget):
         # Try to refresh token in background to catch revoked tokens
         if self._config.get_nexus_access_token():
             QTimer.singleShot(500, self._revalidate_token)
+        # Silent renew: check token every 5 minutes, refresh if near expiry
+        self._renew_timer = QTimer(self)
+        self._renew_timer.setInterval(5 * 60 * 1000)  # 5 minutes
+        self._renew_timer.timeout.connect(self._silent_renew)
+        self._renew_timer.start()
 
     def _build(self):
         self._avatar_ready.connect(self._on_avatar_ready)
@@ -302,6 +308,22 @@ class NexusWidget(QWidget):
         self._worker.finished.connect(self._thread.quit)
         self._thread.start()
 
+    def _silent_renew(self):
+        """Periodically refresh the token before it expires."""
+        if self._thread is not None and self._thread.isRunning():
+            return
+        tokens = self._config.get_nexus_tokens()
+        if not tokens.get("refresh_token"):
+            return
+        expires_at = tokens.get("expires_at", 0)
+        # Refresh if token expires within the next 10 minutes
+        if time.time() >= expires_at - 600:
+            print("[NEXUS] Silent renew: token near expiry, refreshing", flush=True)
+            self._start_bg_work(
+                _RefreshWorker(tokens["refresh_token"]),
+                self._on_token_refreshed,
+            )
+
     def _revalidate_token(self):
         """Background check that the stored token is still valid."""
         if self._thread is not None and self._thread.isRunning():
@@ -364,10 +386,15 @@ class NexusWidget(QWidget):
             self._config.set_nexus_user_info(existing)
             self._refresh()
 
-    def prompt_login(self):
-        """Programmatically open the auth dialog (used for auto-auth on first launch)."""
-        if not self._config.get_nexus_access_token():
-            self._on_login()
+    def prompt_login(self) -> bool:
+        """Programmatically open the auth dialog (used for auto-auth on first launch).
+
+        Returns True if the user successfully authenticated.
+        """
+        if self._config.get_nexus_access_token():
+            return True
+        self._on_login()
+        return bool(self._config.get_nexus_access_token())
 
     def _on_login(self):
         dlg = NexusAuthDialog(self)

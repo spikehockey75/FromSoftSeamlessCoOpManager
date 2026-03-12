@@ -83,8 +83,23 @@ class MainWindow(QMainWindow):
             return
         if self._config.get("nexus_auth_prompted"):
             return
+        logged_in = self._sidebar.nexus_widget.prompt_login()
         self._config.set("nexus_auth_prompted", True)
-        self._sidebar.nexus_widget.prompt_login()
+        if not logged_in:
+            from PySide6.QtWidgets import QMessageBox
+            msg = QMessageBox(self)
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("Nexus Mods Sign-In Skipped")
+            msg.setText(
+                "You can still use the app, but without a Nexus Mods account "
+                "the following features will be unavailable:\n\n"
+                "  - Automatic mod update checks\n"
+                "  - Trending mods\n"
+                "  - Direct mod downloads from Nexus\n\n"
+                "You can sign in at any time from the sidebar."
+            )
+            msg.setStandardButtons(QMessageBox.Ok)
+            msg.exec()
 
     # ------------------------------------------------------------------
     # Layout construction
